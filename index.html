@@ -64,26 +64,23 @@
       </div>
 
       <div id="timeline-wrap">
-  <div id="timeline-buttons">
-    <button id="addBlank">Blank</button>
-    <button id="addDuplicate">Duplicate</button>
-    <button id="deleteFrame">Delete</button>
-    <button id="playTimeline">▶ Play</button>
-    FPS <input type="number" id="timelineFPS" value="24" style="width:50px;">
-    <label>
-      <input type="checkbox" id="onionToggle"> Onion Skin
-    </label>
-    <div id="onionOptions" style="display:none;">
-      Back <input type="number" id="onionBack" value="3" style="width:40px;">
-      Forward <input type="number" id="onionForward" value="3" style="width:40px;">
+        <div id="timeline-buttons">
+          <button id="addBlank">Blank</button>
+          <button id="addDuplicate">Duplicate</button>
+          <button id="deleteFrame">Delete</button>
+          <button id="playTimeline">▶ Play</button>
+          FPS <input type="number" id="timelineFPS" value="24" style="width:50px;">
+          <label>
+            <input type="checkbox" id="onionToggle"> Onion Skin
+          </label>
+          <div id="onionOptions" style="display:none;">
+            Back <input type="number" id="onionBack" value="3" style="width:40px;">
+            Forward <input type="number" id="onionForward" value="3" style="width:40px;">
+          </div>
+        </div>
+        <div id="timeline"></div>
+      </div>
     </div>
-  </div>
-
-  <div id="timeline"></div>
-
-  <div id="timeline-counter">
-  Frame: <span id="currentFrame">1</span> / <span id="totalFrames">10</span>
-</div>
 
     <div id="right-panel">
       <div id="properties-panel">
@@ -142,8 +139,3 @@
 <script src="script.js"></script>
 </body>
 </html>
-
-
-
-
-
