@@ -8,43 +8,6 @@ const projWInput = document.getElementById("projW");
 const projHInput = document.getElementById("projH");
 const projFPSInput = document.getElementById("projFPS");
 const app = document.getElementById("app");
-const currentFrameEl = document.getElementById("currentFrame");
-const totalFramesEl = document.getElementById("totalFrames");
-
-// Example: your timeline array
-let frames = []; // populate with your frames
-let currentFrameIndex = 0;
-
-// Initialize total frames
-totalFramesEl.textContent = frames.length || 1;
-
-// Function to go to a specific frame
-function goToFrame(index) {
-  if (index < 0) index = 0;
-  if (index >= frames.length) index = frames.length - 1;
-  currentFrameIndex = index;
-
-  currentFrameEl.textContent = currentFrameIndex + 1; // +1 because users expect frame 1 to be first
-  // Render the frame here
-  renderFrame(frames[currentFrameIndex]);
-}
-
-// Example of updating when you add/delete frames
-function addFrame(frame) {
-  frames.push(frame);
-  totalFramesEl.textContent = frames.length;
-}
-
-function deleteFrame(index) {
-  frames.splice(index, 1);
-  totalFramesEl.textContent = frames.length;
-  if (currentFrameIndex >= frames.length) goToFrame(frames.length - 1);
-  else goToFrame(currentFrameIndex);
-}
-
-  renderTimeline();
-  refreshCanvas();
-};
 
 // =======================
 // Tools
@@ -106,14 +69,14 @@ createProjectBtn.onclick = () => {
   currentFrame = 0;
   activeLayer = 0;
 
-objectFrames[0][0].push({
-  type: "rect",
-  width: 100,
-  height: 80,
-  transform: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
-  style: { fill: "red", opacity: 1 }
-});
-realFrames[0][0] = true;
+  // Example predefined object
+  objectFrames[0][0].push({
+    type: "rect",
+    width: 100,
+    height: 80,
+    transform: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
+    style: { fill: "red", opacity: 1 }
+  });
 
   // Show main app and hide modal
   app.hidden = false;
@@ -127,37 +90,6 @@ realFrames[0][0] = true;
 };
 ctx.imageSmoothingEnabled = true;
 ctx.imageSmoothingQuality = "high";
-
-function getCanvasPos(e) {
-  const rect = canvas.getBoundingClientRect();
-  let x, y;
-
-  if (e.touches && e.touches.length > 0) {
-    x = e.touches[0].clientX - rect.left;
-    y = e.touches[0].clientY - rect.top;
-  } else {
-    x = e.clientX - rect.left;
-    y = e.clientY - rect.top;
-  }
-
-  return { x, y };
-  // High-DPI support
-function resizeCanvasForDPI() {
-    const dpi = window.devicePixelRatio || 1;
-    canvas.width = +projWInput.value * dpi;
-    canvas.height = +projHInput.value * dpi;
-    canvas.style.width = projWInput.value + "px";
-    canvas.style.height = projHInput.value + "px";
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-}
-resizeCanvasForDPI();
-
-}
-canvas.addEventListener("touchmove", e => {
-    if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
-}, { passive: false });
 
 // =======================
 // Tool Selection
@@ -840,23 +772,6 @@ if (currentTool === "eraser") {
   }
 };
 
-canvas.addEventListener("touchstart", e => {
-    e.preventDefault(); // prevent scrolling
-    const pos = getCanvasPos(e);
-    canvas.onmousedown({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
-});
-
-canvas.addEventListener("touchmove", e => {
-    e.preventDefault();
-    const pos = getCanvasPos(e);
-    canvas.onmousemove({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
-});
-
-canvas.addEventListener("touchend", e => {
-    e.preventDefault();
-    canvas.onmouseup(e);
-});
-
 // =======================
 // Pixel Helpers
 // =======================
@@ -1357,19 +1272,3 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
 
   return null;
 }
-
-window.addEventListener("resize", () => {
-    const container = canvas.parentElement;
-    if (!container) return;
-
-    const scaleX = container.clientWidth / canvas.width;
-    const scaleY = container.clientHeight / canvas.height;
-    const scale = Math.min(scaleX, scaleY);
-
-    canvas.style.transform = `scale(${scale})`;
-    canvas.style.transformOrigin = "top left";
-});
-
-
-
-
