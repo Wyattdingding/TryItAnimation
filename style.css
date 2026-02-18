@@ -169,6 +169,15 @@ canvas {
   font-weight: 600;
   box-shadow: inset 0 -1px 0 rgba(0,0,0,0.1);
 }
+#timeline-slider {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#timelineFrames {
+  flex: 1;
+}
 
 .frame {
   width: 36px;
@@ -280,3 +289,4 @@ canvas {
   border-color: #4da3ff;
   background: #2a3a4a;
 }
+
