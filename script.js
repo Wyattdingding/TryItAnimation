@@ -8,28 +8,39 @@ const projWInput = document.getElementById("projW");
 const projHInput = document.getElementById("projH");
 const projFPSInput = document.getElementById("projFPS");
 const app = document.getElementById("app");
-const timelineFramesInput = document.getElementById("timelineFrames");
-const timelineFramesValue = document.getElementById("timelineFramesValue");
+const currentFrameEl = document.getElementById("currentFrame");
+const totalFramesEl = document.getElementById("totalFrames");
 
-timelineFramesInput.oninput = e => {
-  const newFrameCount = +e.target.value;
-  timelineFramesValue.textContent = newFrameCount;
+// Example: your timeline array
+let frames = []; // populate with your frames
+let currentFrameIndex = 0;
 
-  const oldCount = frames.length;
-  if (newFrameCount > oldCount) {
-    // Add extra frames
-    for (let i = oldCount; i < newFrameCount; i++) {
-      frames.push(layers.map(() => ctx.createImageData(canvas.width, canvas.height)));
-      realFrames.push(layers.map(() => false));
-      objectFrames.push(layers.map(() => []));
-    }
-  } else if (newFrameCount < oldCount) {
-    // Remove frames from end
-    frames.length = newFrameCount;
-    realFrames.length = newFrameCount;
-    objectFrames.length = newFrameCount;
-    if (currentFrame >= newFrameCount) currentFrame = newFrameCount - 1;
-  }
+// Initialize total frames
+totalFramesEl.textContent = frames.length || 1;
+
+// Function to go to a specific frame
+function goToFrame(index) {
+  if (index < 0) index = 0;
+  if (index >= frames.length) index = frames.length - 1;
+  currentFrameIndex = index;
+
+  currentFrameEl.textContent = currentFrameIndex + 1; // +1 because users expect frame 1 to be first
+  // Render the frame here
+  renderFrame(frames[currentFrameIndex]);
+}
+
+// Example of updating when you add/delete frames
+function addFrame(frame) {
+  frames.push(frame);
+  totalFramesEl.textContent = frames.length;
+}
+
+function deleteFrame(index) {
+  frames.splice(index, 1);
+  totalFramesEl.textContent = frames.length;
+  if (currentFrameIndex >= frames.length) goToFrame(frames.length - 1);
+  else goToFrame(currentFrameIndex);
+}
 
   renderTimeline();
   refreshCanvas();
@@ -1358,6 +1369,7 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
 
 
 
