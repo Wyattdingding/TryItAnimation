@@ -8,6 +8,32 @@ const projWInput = document.getElementById("projW");
 const projHInput = document.getElementById("projH");
 const projFPSInput = document.getElementById("projFPS");
 const app = document.getElementById("app");
+const timelineFramesInput = document.getElementById("timelineFrames");
+const timelineFramesValue = document.getElementById("timelineFramesValue");
+
+timelineFramesInput.oninput = e => {
+  const newFrameCount = +e.target.value;
+  timelineFramesValue.textContent = newFrameCount;
+
+  const oldCount = frames.length;
+  if (newFrameCount > oldCount) {
+    // Add extra frames
+    for (let i = oldCount; i < newFrameCount; i++) {
+      frames.push(layers.map(() => ctx.createImageData(canvas.width, canvas.height)));
+      realFrames.push(layers.map(() => false));
+      objectFrames.push(layers.map(() => []));
+    }
+  } else if (newFrameCount < oldCount) {
+    // Remove frames from end
+    frames.length = newFrameCount;
+    realFrames.length = newFrameCount;
+    objectFrames.length = newFrameCount;
+    if (currentFrame >= newFrameCount) currentFrame = newFrameCount - 1;
+  }
+
+  renderTimeline();
+  refreshCanvas();
+};
 
 // =======================
 // Tools
@@ -1332,4 +1358,5 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
 
