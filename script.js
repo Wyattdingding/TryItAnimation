@@ -1,8 +1,3 @@
-// =======================
-// Animate Clone JS — FEATURE COMPLETE + STABLE
-// Onion Skin fully isolated on separate canvas
-// =======================
-
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const timeline = document.getElementById("timeline");
@@ -51,9 +46,6 @@ let realFrames = []; // [frame][layer] => boolean
 let drawing = false;
 let startPos = { x: 0, y: 0 };
 let currentMousePos = { x: 0, y: 0 };
-canvas.addEventListener("touchmove", e => {
-    if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
-}, { passive: false });
 
 // =======================
 // Project Creation
@@ -76,18 +68,6 @@ createProjectBtn.onclick = () => {
 
   currentFrame = 0;
   activeLayer = 0;
-// High-DPI support
-function resizeCanvasForDPI() {
-    const dpi = window.devicePixelRatio || 1;
-    canvas.width = +projWInput.value * dpi;
-    canvas.height = +projHInput.value * dpi;
-    canvas.style.width = projWInput.value + "px";
-    canvas.style.height = projHInput.value + "px";
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-}
-resizeCanvasForDPI();
 
   // Example predefined object
   objectFrames[0][0].push({
@@ -110,6 +90,37 @@ resizeCanvasForDPI();
 };
 ctx.imageSmoothingEnabled = true;
 ctx.imageSmoothingQuality = "high";
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let x, y;
+
+  if (e.touches && e.touches.length > 0) {
+    x = e.touches[0].clientX - rect.left;
+    y = e.touches[0].clientY - rect.top;
+  } else {
+    x = e.clientX - rect.left;
+    y = e.clientY - rect.top;
+  }
+
+  return { x, y };
+  // High-DPI support
+function resizeCanvasForDPI() {
+    const dpi = window.devicePixelRatio || 1;
+    canvas.width = +projWInput.value * dpi;
+    canvas.height = +projHInput.value * dpi;
+    canvas.style.width = projWInput.value + "px";
+    canvas.style.height = projHInput.value + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+}
+resizeCanvasForDPI();
+
+}
+canvas.addEventListener("touchmove", e => {
+    if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
+}, { passive: false });
 
 // =======================
 // Tool Selection
