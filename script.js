@@ -95,14 +95,14 @@ createProjectBtn.onclick = () => {
   currentFrame = 0;
   activeLayer = 0;
 
-  // Example predefined object
-  objectFrames[0][0].push({
-    type: "rect",
-    width: 100,
-    height: 80,
-    transform: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
-    style: { fill: "red", opacity: 1 }
-  });
+objectFrames[0][0].push({
+  type: "rect",
+  width: 100,
+  height: 80,
+  transform: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
+  style: { fill: "red", opacity: 1 }
+});
+realFrames[0][0] = true;
 
   // Show main app and hide modal
   app.hidden = false;
@@ -1358,5 +1358,6 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
 
 
