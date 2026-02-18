@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Animate Clone</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="topBar">
+  <div class="menu">
+    <div class="menu-item">File
+      <div class="dropdown">
+        <div class="dropdown-item">New</div>
+        <div class="dropdown-item">Open</div>
+        <div class="dropdown-item">Save</div>
+      </div>
+    </div>
+    <div class="menu-item">Edit
+      <div class="dropdown">
+        <div class="dropdown-item">Undo</div>
+        <div class="dropdown-item">Redo</div>
+      </div>
+    </div>
+    <div class="menu-item">Window
+      <div class="dropdown">
+        <div class="dropdown-item">Layers</div>
+        <div class="dropdown-item">Timeline</div>
+      </div>
+    </div>
+    <div class="menu-item">Help
+      <div class="dropdown">
+        <div class="dropdown-item">About</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="projectModal">
+  <div class="modal">
+    <h3>New Project</h3>
+    <label>Width <input id="projW" value="900"></label><br>
+    <label>Height <input id="projH" value="500"></label><br>
+    <label>FPS <input id="projFPS" value="24"></label><br><br>
+    <button id="createProject">Create</button>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <div id="tools">
+    <button class="tool active" data-tool="brush">🖌️</button>
+    <button class="tool" data-tool="eraser">🧽</button>
+    <button class="tool" data-tool="fill">🪣</button>
+    <button class="tool" data-tool="shape">🟩</button>
+    <button class="tool" data-tool="transform">👆</button>
+  </div>
+
+  <div id="main">
+    <div id="left-panel">
+      <div id="canvas-wrap">
+        <div id="canvas-transform">
+          <canvas id="canvas"></canvas>
+        </div>
+      </div>
+
+      <div id="timeline-wrap">
+        <div id="timeline-buttons">
+          <button id="addBlank">Blank</button>
+          <button id="addDuplicate">Duplicate</button>
+          <button id="deleteFrame">Delete</button>
+          <button id="playTimeline">▶ Play</button>
+          FPS <input type="number" id="timelineFPS" value="24" style="width:50px;">
+          <label>
+            <input type="checkbox" id="onionToggle"> Onion Skin
+          </label>
+          <div id="onionOptions" style="display:none;">
+            Back <input type="number" id="onionBack" value="3" style="width:40px;">
+            Forward <input type="number" id="onionForward" value="3" style="width:40px;">
+          </div>
+        </div>
+        <div id="timeline"></div>
+      </div>
+    </div>
+
+    <div id="right-panel">
+      <div id="properties-panel">
+        <h4>Properties</h4>
+        <div id="tool-properties">
+          <div>
+            <label>Brush Size <input id="brushSize" type="number" value="4"></label>
+          </div>
+          <div>
+            <label>Brush Color <input id="brushColor" type="color" value="#000000"></label>
+          </div>
+          <div style="display:none;" id="fillColorContainer">
+            <label>Fill Color <input id="fillColor" type="color" value="#ff0000"></label>
+          </div>
+          <div>
+            <label>Eraser Size <input id="eraserSize" type="number" value="10"></label>
+          </div>
+        </div>
+      </div>
+
+      <div id="alphaContainer">
+        <label>Opacity <input id="toolAlpha" type="number" value="100" min="0" max="100">%</label>
+      </div>
+
+      <div id="shapeProperties" style="display:none;">
+        <label>Color: <input type="color" id="shapeColor" value="#000000"></label>
+        <label>Thickness: <input type="number" id="shapeThickness" min="1" max="50" value="3"></label>
+        <div class="shape-grid">
+          <div class="shape-option active" data-shape="line">
+            <canvas id="linePreview" width="40" height="40"></canvas>
+          </div>
+          <div class="shape-option" data-shape="rect">
+            <canvas id="rectPreview" width="40" height="40"></canvas>
+          </div>
+          <div class="shape-option" data-shape="circle">
+            <canvas id="circlePreview" width="40" height="40"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="layers-panel">
+        <h4>Layers</h4>
+        <button id="addLayer">+ Add Layer</button>
+        <div id="layersList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="frameMenu">
+  <div data-action="blank">Add Blank</div>
+  <div data-action="duplicate">Duplicate</div>
+  <div data-action="delete">Delete</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

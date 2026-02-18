@@ -1,0 +1,1279 @@
+// =======================
+// Animate Clone JS — FEATURE COMPLETE + STABLE
+// Onion Skin fully isolated on separate canvas
+// =======================
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const timeline = document.getElementById("timeline");
+const frameMenu = document.getElementById("frameMenu");
+const projModal = document.getElementById("projectModal");
+const createProjectBtn = document.getElementById("createProject");
+const projWInput = document.getElementById("projW");
+const projHInput = document.getElementById("projH");
+const projFPSInput = document.getElementById("projFPS");
+const app = document.getElementById("app");
+
+// =======================
+// Tools
+// =======================
+let currentTool = "brush";
+let brushSize = 4;
+let brushColor = "#000000";
+let eraserSize = 10;
+let shapeType = "line";
+let shapeColor = "#000000";
+let shapeThickness = 3;
+let fillColor = "#ff0000";
+let selectedObject = null;
+let transformDragging = false;
+let transformOffset = { x: 0, y: 0 };
+let rotationStartAngle = 0;
+let rotationStartObjectRotation = 0;
+let lastEraserPos = null;
+
+// =======================
+// Timeline / State
+// =======================
+let frames = [];
+let objectFrames = []; 
+let layers = ["Layer 1"];
+let currentFrame = 0;
+let activeLayer = 0;
+let timelineFPS = 24;
+let playing = false;
+let playInterval = null;
+let onionEnabled = false;
+let onionBack = 3;
+let onionForward = 0;
+let realFrames = []; // [frame][layer] => boolean
+
+let drawing = false;
+let startPos = { x: 0, y: 0 };
+let currentMousePos = { x: 0, y: 0 };
+
+// =======================
+// Project Creation
+// =======================
+createProjectBtn.onclick = () => {
+  canvas.width = +projWInput.value;
+  canvas.height = +projHInput.value;
+  timelineFPS = +projFPSInput.value;
+
+  frames = [];
+  realFrames = [];
+  objectFrames = [];
+  const defaultFrames = 10;
+
+  for (let i = 0; i < defaultFrames; i++) {
+    frames.push(layers.map(() => ctx.createImageData(canvas.width, canvas.height)));
+    realFrames.push(layers.map(() => false));
+    objectFrames.push(layers.map(() => []));
+  }
+
+  currentFrame = 0;
+  activeLayer = 0;
+
+  // Example predefined object
+  objectFrames[0][0].push({
+    type: "rect",
+    width: 100,
+    height: 80,
+    transform: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
+    style: { fill: "red", opacity: 1 }
+  });
+
+  // Show main app and hide modal
+  app.hidden = false;
+  projModal.hidden = true;
+  projModal.style.display = "none";
+
+  renderLayers();
+  renderTimeline();
+  refreshCanvas();
+  renderShapePreviews();
+};
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = "high";
+
+// =======================
+// Tool Selection
+// =======================
+document.querySelectorAll(".tool").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tool").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentTool = btn.dataset.tool;
+    toggleToolProperties();
+  };
+});
+
+function toggleToolProperties() {
+  document.getElementById("shapeProperties").style.display = currentTool === "shape" ? "block" : "none";
+  document.getElementById("fillColorContainer").style.display = currentTool === "fill" ? "block" : "none";
+}
+function getObjectAtPosition(x, y) {
+
+  // Check layers from top to bottom
+  for (let l = layers.length - 1; l >= 0; l--) {
+
+    const objects = getExposedObjectFrame(currentFrame, l);
+
+    for (let i = objects.length - 1; i >= 0; i--) {
+
+      const obj = objects[i];
+      if (!obj) continue;
+
+      const box = getObjectBoundingBox(obj);
+      if (!box) continue;
+
+      let localX = x;
+      let localY = y;
+
+      if (obj.transform) {
+        const t = obj.transform;
+
+        localX -= t.x ?? 0;
+        localY -= t.y ?? 0;
+
+        const sin = Math.sin(-(t.rotation ?? 0));
+        const cos = Math.cos(-(t.rotation ?? 0));
+
+        const lx = localX * cos - localY * sin;
+        const ly = localX * sin + localY * cos;
+
+        localX = lx;
+        localY = ly;
+
+        localX /= t.scaleX ?? 1;
+        localY /= t.scaleY ?? 1;
+      }
+
+      const padding = obj.type === "brush"
+        ? (obj.style?.width ?? 4) / 2
+        : 0;
+
+      const left = box.x - box.width / 2 - padding;
+      const right = box.x + box.width / 2 + padding;
+      const top = box.y - box.height / 2 - padding;
+      const bottom = box.y + box.height / 2 + padding;
+
+      if (
+        localX >= left &&
+        localX <= right &&
+        localY >= top &&
+        localY <= bottom
+      ) {
+        activeLayer = l; // 🔥 auto-switch to clicked layer
+        renderLayers();
+        renderTimeline();
+        return obj;
+      }
+    }
+  }
+
+  return null;
+}
+
+// =======================
+// Layers
+// =======================
+const layersList = document.getElementById("layersList");
+
+function renderLayers() {
+  layersList.innerHTML = "";
+  layers.forEach((name, i) => {
+    const div = document.createElement("div");
+    div.className = "layer-item" + (i === activeLayer ? " active" : "");
+    div.textContent = name;
+    div.onclick = () => {
+      activeLayer = i;
+      renderLayers();
+      renderTimeline();
+      refreshCanvas();
+    };
+    layersList.appendChild(div);
+  });
+}
+
+document.getElementById("addLayer").onclick = () => {
+  layers.push(`Layer ${layers.length + 1}`);
+  frames.forEach(f => f.push(ctx.createImageData(canvas.width, canvas.height)));
+  realFrames.forEach(r => r.push(false));
+  objectFrames.forEach(o => o.push([]));
+  activeLayer = layers.length - 1;
+
+  renderLayers();
+  renderTimeline();
+  refreshCanvas();
+};
+
+// =======================
+// Timeline Rendering
+// =======================
+function renderTimeline() {
+  timeline.innerHTML = "";
+  layers.forEach((_, layerIdx) => {
+    const row = document.createElement("div");
+    row.className = "timeline-row";
+
+    frames.forEach((frame, frameIdx) => {
+      const f = document.createElement("div");
+      f.className = "frame";
+      f.dataset.index = frameIdx;
+      f.dataset.layer = layerIdx;
+      f.style.background = realFrames[frameIdx][layerIdx] ? "#fff" : "#777";
+      if (frameIdx === currentFrame && layerIdx === activeLayer) f.classList.add("active");
+      f.onmousedown = frameMouseDown;
+      f.oncontextmenu = frameRightClick;
+      row.appendChild(f);
+    });
+
+    timeline.appendChild(row);
+  });
+}
+
+// =======================
+// Frame Interaction
+// =======================
+function frameMouseDown(e) {
+  currentFrame = +e.target.dataset.index;
+  activeLayer = +e.target.dataset.layer;
+  renderLayers();
+  renderTimeline();
+  refreshCanvas();
+}
+
+function frameRightClick(e) {
+  e.preventDefault();
+  currentFrame = +e.target.dataset.index;
+  activeLayer = +e.target.dataset.layer;
+  renderLayers();
+  renderTimeline();
+  refreshCanvas();
+
+  frameMenu.style.display = "block";
+  frameMenu.style.left = e.pageX + "px";
+  frameMenu.style.top = e.pageY + "px";
+}
+
+document.addEventListener("click", () => frameMenu.style.display = "none");
+
+frameMenu.querySelectorAll("div").forEach(item => {
+  item.onclick = () => {
+    if (item.dataset.action === "blank") overwriteFrameBlank();
+    if (item.dataset.action === "duplicate") overwriteFrameDuplicate();
+    if (item.dataset.action === "delete") deleteFrame();
+    renderTimeline();
+    refreshCanvas();
+    frameMenu.style.display = "none";
+  };
+});
+
+// =======================
+// Frame Helpers
+// =======================
+function makeKeyframeAt(frame, layer, sourceImg = null) {
+  const img = ctx.createImageData(canvas.width, canvas.height);
+  if (sourceImg) img.data.set(sourceImg.data);
+  frames[frame][layer] = img;
+  realFrames[frame][layer] = true;
+}
+
+function overwriteFrameBlank() {
+  objectFrames[currentFrame][activeLayer] = [];
+  realFrames[currentFrame][activeLayer] = true;
+  propagateObjectsFrom(currentFrame, activeLayer);
+}
+
+function overwriteFrameDuplicate() {
+  const srcFrame = findPreviousReal(currentFrame, activeLayer);
+  if (srcFrame < 0) return;
+  objectFrames[currentFrame][activeLayer] = JSON.parse(
+    JSON.stringify(objectFrames[srcFrame][activeLayer])
+  );
+  realFrames[currentFrame][activeLayer] = true;
+  propagateObjectsFrom(currentFrame, activeLayer);
+}
+
+function propagateObjectsFrom(startFrame, layer) {
+  const src = objectFrames[startFrame][layer];
+  for (let i = startFrame + 1; i < objectFrames.length; i++) {
+    if (realFrames[i][layer]) break;
+    objectFrames[i][layer] = JSON.parse(JSON.stringify(src));
+  }
+}
+
+function deleteFrame() {
+  if (!realFrames[currentFrame][activeLayer]) return;
+  objectFrames[currentFrame][activeLayer] = [];
+  realFrames[currentFrame][activeLayer] = false;
+
+  const prev = findPreviousReal(currentFrame, activeLayer);
+  if (prev >= 0) {
+    for (let i = currentFrame; i < objectFrames.length; i++) {
+      if (realFrames[i][activeLayer]) break;
+      objectFrames[i][activeLayer] = JSON.parse(
+        JSON.stringify(objectFrames[prev][activeLayer])
+      );
+    }
+  }
+}
+
+// =======================
+// Utilities
+// =======================
+function findPreviousReal(frame, layer) {
+  for (let i = frame - 1; i >= 0; i--) if (realFrames[i][layer]) return i;
+  return -1;
+}
+
+function getExposedFrame(frame, layer) {
+  for (let i = frame; i >= 0; i--) if (realFrames[i][layer]) return frames[i][layer];
+  return null;
+}
+
+function isImageDataEmpty(img) {
+  for (let i = 3; i < img.data.length; i += 4) if (img.data[i] !== 0) return false;
+  return true;
+}
+
+function getExposedObjectFrame(frame, layer) {
+  for (let i = frame; i >= 0; i--) {
+    if (realFrames[i][layer]) {
+      return objectFrames[i][layer];
+    }
+  }
+  return [];
+}
+
+function getObjectBoundingBox(obj) {
+  if (!obj) return null;
+
+  if (obj.type === "brush" && obj.points?.length) {
+    // points are relative to transform
+    const xs = obj.points.map(p => p.x);
+    const ys = obj.points.map(p => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    return { x: centerX, y: centerY, width, height };
+  }
+
+  if ((obj.type === "rect" || obj.type === "fill") && obj.start && obj.end) {
+    const minX = Math.min(obj.start.x, obj.end.x);
+    const maxX = Math.max(obj.start.x, obj.end.x);
+    const minY = Math.min(obj.start.y, obj.end.y);
+    const maxY = Math.max(obj.start.y, obj.end.y);
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    return { x: centerX, y: centerY, width, height };
+  }
+
+  if ((obj.type === "line" || obj.type === "circle") && obj.start && obj.end) {
+    const minX = Math.min(obj.start.x, obj.end.x);
+    const maxX = Math.max(obj.start.x, obj.end.x);
+    const minY = Math.min(obj.start.y, obj.end.y);
+    const maxY = Math.max(obj.start.y, obj.end.y);
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    return { x: centerX, y: centerY, width, height };
+  }
+
+  return { x: 0, y: 0, width: 0, height: 0 };
+}
+
+// =======================
+// Timeline Toolbar
+// =======================
+document.getElementById("addBlank").onmousedown = e => { e.preventDefault(); overwriteFrameBlank(); renderTimeline(); refreshCanvas(); };
+document.getElementById("addDuplicate").onmousedown = e => { e.preventDefault(); overwriteFrameDuplicate(); renderTimeline(); refreshCanvas(); };
+document.getElementById("deleteFrame").onmousedown = e => { e.preventDefault(); deleteFrame(); renderTimeline(); refreshCanvas(); };
+const playBtn = document.getElementById("playTimeline");
+
+playBtn.onclick = e => {
+  e.preventDefault();
+
+  if (playing) {
+    stopTimeline();
+    playBtn.textContent = "▶ Play";
+  } else {
+    playTimeline();
+    playBtn.textContent = "⏹ Stop";
+  }
+};
+
+
+// =======================
+// Onion Skin Controls
+// =======================
+document.getElementById("onionToggle").onchange = e => {
+  onionEnabled = e.target.checked;
+  document.getElementById("onionOptions").style.display = onionEnabled ? "inline-block" : "none";
+  refreshCanvas();
+};
+document.getElementById("onionBack").oninput = e => { onionBack = +e.target.value; refreshCanvas(); };
+document.getElementById("onionForward").oninput = e => { onionForward = +e.target.value; refreshCanvas(); };
+
+// =======================
+// Draw only actual frame layers (no onion skin)
+// =======================
+function drawCurrentFrameOnly() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let l = 0; l < layers.length; l++) {
+    const img = getExposedFrame(currentFrame, l);
+    if (img && !isImageDataEmpty(img)) ctx.putImageData(img, 0, 0);
+  }
+}
+
+// =======================
+// Refresh Canvas
+// =======================
+function refreshCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawCurrentFrameOnly();
+  drawObjectLayer();
+
+  if (onionEnabled && !drawing) {
+    const baseAlpha = 0.4;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+
+    for (let l = 0; l < layers.length; l++) {
+      // Previous frames
+      for (let i = 1; i <= onionBack; i++) {
+        const frameIndex = currentFrame - i;
+        if (frameIndex < 0) break;
+        const img = getExposedFrame(frameIndex, l);
+        if (!img || isImageDataEmpty(img)) continue;
+        ctx.globalAlpha = baseAlpha * (1 - i / (onionBack + 1));
+        ctx.putImageData(img, 0, 0);
+      }
+      // Future frames
+      for (let i = 1; i <= onionForward; i++) {
+        const frameIndex = currentFrame + i;
+        if (frameIndex >= frames.length) break;
+        const img = getExposedFrame(frameIndex, l);
+        if (!img || isImageDataEmpty(img)) continue;
+        ctx.globalAlpha = baseAlpha * (1 - i / (onionForward + 1));
+        ctx.putImageData(img, 0, 0);
+      }
+    }
+
+    ctx.restore();
+  }
+}
+
+// =======================
+// Save Frame
+// =======================
+function saveFrame() {
+  realFrames[currentFrame][activeLayer] = true;
+  propagateObjectsFrom(currentFrame, activeLayer);
+}
+
+// =======================
+// Drawing — Object-Based
+// =======================
+let brushPoints = [];
+
+canvas.onmousedown = e => {
+  const r = canvas.getBoundingClientRect();
+  startPos = { x: e.clientX - r.left, y: e.clientY - r.top };
+  currentMousePos = { ...startPos };
+  drawing = true;
+
+if (!realFrames[currentFrame][activeLayer]) {
+  realFrames[currentFrame][activeLayer] = true;
+}
+
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // --- Transform Tool ---
+  if (currentTool === "transform") {
+
+  const mouseX = startPos.x;
+  const mouseY = startPos.y;
+
+  // FIRST: if something already selected, check its handles
+  if (selectedObject) {
+    const handle = getHandleUnderMouse(selectedObject, mouseX, mouseY);
+    if (handle) {
+      transformAction = handle.type;
+      if (handle.type === "resize") {
+  activeHandle = handle.corner;
+}
+
+if (handle.type === "rotate") {
+  const t = selectedObject.transform;
+  const dx = mouseX - t.x;
+  const dy = mouseY - t.y;
+
+  rotationStartAngle = Math.atan2(dy, dx);
+  rotationStartObjectRotation = t.rotation;
+}
+
+      transformDragging = true;
+      return; // 🔥 DO NOT reselect
+    }
+  }
+
+  // Otherwise check if clicking object body
+  const clickedObject = getObjectAtPosition(mouseX, mouseY);
+
+  if (clickedObject) {
+    selectedObject = clickedObject;
+
+    if (!selectedObject.transform) {
+      const box = getObjectBoundingBox(selectedObject);
+      selectedObject.transform = {
+        x: box.x,
+        y: box.y,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1
+      };
+    }
+
+    transformAction = "move";
+    activeHandle = null;
+
+    transformOffset.x = mouseX - selectedObject.transform.x;
+    transformOffset.y = mouseY - selectedObject.transform.y;
+
+    transformDragging = true;
+  } else {
+    selectedObject = null;
+    transformAction = null;
+    activeHandle = null;
+    refreshCanvas();
+  }
+}
+
+  // --- Brush Tool ---
+  if (currentTool === "brush") {
+    brushPoints = [{ ...startPos }];
+    ctx.strokeStyle = brushColor;
+    ctx.lineWidth = brushSize;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.beginPath();
+    ctx.moveTo(startPos.x, startPos.y);
+  }
+// --- Eraser Tool ---
+if (currentTool === "eraser") {
+    drawing = true;
+    brushPoints = [];
+    lastEraserPos = null; // reset at start
+  }
+};
+
+canvas.onmousemove = e => {
+  const r = canvas.getBoundingClientRect();
+  currentMousePos = { x: e.clientX - r.left, y: e.clientY - r.top };
+
+  // --- Transform Dragging ---
+  if (currentTool === "transform" && transformDragging && selectedObject) {
+    const t = selectedObject.transform;
+    const mouseX = currentMousePos.x;
+    const mouseY = currentMousePos.y;
+
+    if (transformAction === "move") {
+      t.x = mouseX - transformOffset.x;
+      t.y = mouseY - transformOffset.y;
+    } else if (transformAction === "rotate") {
+      const dx = mouseX - t.x;
+      const dy = mouseY - t.y;
+      const currentAngle = Math.atan2(dy, dx);
+      let newRotation = rotationStartObjectRotation + (currentAngle - rotationStartAngle);
+      if (e.shiftKey) {
+        const snap = Math.PI / 12; // 15°
+        newRotation = Math.round(newRotation / snap) * snap;
+      }
+      t.rotation = newRotation;
+    } else if (transformAction === "resize" && activeHandle != null && selectedObject) {
+      const box = getObjectBoundingBox(selectedObject);
+      const visualWidth = box.width * t.scaleX;
+      const visualHeight = box.height * t.scaleY;
+
+      let dx = mouseX - t.x;
+      let dy = mouseY - t.y;
+
+      const sin = Math.sin(-t.rotation);
+      const cos = Math.cos(-t.rotation);
+      let localX = dx * cos - dy * sin;
+      let localY = dx * sin + dy * cos;
+
+      const corners = [
+        [-visualWidth / 2, -visualHeight / 2],
+        [ visualWidth / 2, -visualHeight / 2],
+        [ visualWidth / 2,  visualHeight / 2],
+        [-visualWidth / 2,  visualHeight / 2]
+      ];
+      const opposite = corners[(activeHandle + 2) % 4];
+
+      const newWidth = Math.max(4, Math.abs(localX - opposite[0]));
+      const newHeight = Math.max(4, Math.abs(localY - opposite[1]));
+
+      t.scaleX = newWidth / box.width;
+      t.scaleY = newHeight / box.height;
+    }
+
+    refreshCanvas();
+    return; // skip other tools while transforming
+  }
+
+  if (!drawing) return;
+
+  // --- Brush Preview ---
+  if (currentTool === "brush") {
+    brushPoints.push({ ...currentMousePos });
+
+    // --- smooth for preview ---
+    const smoothPoints = [];
+    for (let i = 0; i < brushPoints.length - 1; i++) {
+      const p0 = brushPoints[i === 0 ? i : i - 1];
+      const p1 = brushPoints[i];
+      const p2 = brushPoints[i + 1];
+      const p3 = brushPoints[i + 2 < brushPoints.length ? i + 2 : i + 1];
+      const segments = 3; // fewer for preview
+      for (let t = 0; t <= 1; t += 1 / segments) {
+        const tt = t*t;
+        const ttt = tt*t;
+        const x = 0.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*tt+(-p0.x+3*p1.x-3*p2.x+p3.x)*ttt);
+        const y = 0.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*tt+(-p0.y+3*p1.y-3*p2.y+p3.y)*ttt);
+        smoothPoints.push({ x, y });
+      }
+    }
+
+    const previewObject = {
+      type: "brush",
+      points: smoothPoints,
+      style: { color: brushColor, width: brushSize, opacity: 1 }
+    };
+    refreshCanvas();
+    drawObjectLayer([previewObject]);
+}
+
+  // --- Shape Preview ---
+  if (currentTool === "shape") {
+    const previewObject = {
+      type: shapeType,
+      start: { ...startPos },
+      end: { ...currentMousePos },
+      style: { color: shapeColor, thickness: shapeThickness, opacity: 1 }
+    };
+    refreshCanvas();
+    drawObjectLayer([previewObject]);
+  }
+
+  // --- Eraser Preview & Action ---
+if (currentTool === "eraser") {
+
+  if (lastEraserPos) {
+    const dx = currentMousePos.x - lastEraserPos.x;
+    const dy = currentMousePos.y - lastEraserPos.y;
+    const dist = Math.hypot(dx, dy);
+
+    const step = Math.max(2, eraserSize / 3);
+    const steps = Math.ceil(dist / step);
+
+    for (let i = 0; i <= steps; i++) {
+      const ex = lastEraserPos.x + (dx * i / steps);
+      const ey = lastEraserPos.y + (dy * i / steps);
+      eraseWithCircle(ex, ey, eraserSize);
+    }
+
+  } else {
+    eraseWithCircle(currentMousePos.x, currentMousePos.y, eraserSize);
+  }
+
+  lastEraserPos = { ...currentMousePos };
+  refreshCanvas();
+ }
+};
+
+canvas.onmouseup = () => {
+  // --- Transform Drop ---
+  if (currentTool === "transform" && transformDragging) {
+    transformDragging = false;
+    transformAction = null;
+    activeHandle = null;
+    saveFrame();
+    return;
+  }
+
+  if (!drawing) return;
+
+  // --- Brush Commit ---
+  if (currentTool === "brush" && brushPoints.length) {
+    // --- calculate center ---
+    const xs = brushPoints.map(p => p.x);
+    const ys = brushPoints.map(p => p.y);
+    const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+
+    // --- relative points ---
+    const relativePoints = brushPoints.map(p => ({ x: p.x - centerX, y: p.y - centerY }));
+
+    // --- smooth points using simple Catmull-Rom spline ---
+    const smoothPoints = [];
+    for (let i = 0; i < relativePoints.length - 1; i++) {
+      const p0 = relativePoints[i === 0 ? i : i - 1];
+      const p1 = relativePoints[i];
+      const p2 = relativePoints[i + 1];
+      const p3 = relativePoints[i + 2 < relativePoints.length ? i + 2 : i + 1];
+      const segments = 20; // points between each pair
+      for (let t = 0; t <= 1; t += 1 / segments) {
+        const tt = t * t;
+        const ttt = tt * t;
+        const x = 0.5 * ((2*p1.x) + (-p0.x + p2.x)*t + (2*p0.x - 5*p1.x + 4*p2.x - p3.x)*tt + (-p0.x + 3*p1.x - 3*p2.x + p3.x)*ttt);
+        const y = 0.5 * ((2*p1.y) + (-p0.y + p2.y)*t + (2*p0.y - 5*p1.y + 4*p2.y - p3.y)*tt + (-p0.y + 3*p1.y - 3*p2.y + p3.y)*ttt);
+        smoothPoints.push({ x, y });
+      }
+    }
+
+    objectFrames[currentFrame][activeLayer].push({
+      type: "brush",
+      points: smoothPoints,
+      transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
+      style: { color: brushColor, width: brushSize, opacity: 1 }
+    });
+}
+
+  // --- Shape Commit ---
+  if (currentTool === "shape") {
+  const cx = (startPos.x + currentMousePos.x) / 2;
+  const cy = (startPos.y + currentMousePos.y) / 2;
+
+  const relStart = { x: startPos.x - cx, y: startPos.y - cy };
+  const relEnd = { x: currentMousePos.x - cx, y: currentMousePos.y - cy };
+
+  objectFrames[currentFrame][activeLayer].push({
+    type: shapeType,
+    start: relStart,
+    end: relEnd,
+    transform: { x: cx, y: cy, rotation: 0, scaleX: 1, scaleY: 1 },
+    style: { color: shapeColor, thickness: shapeThickness, opacity: 1 }
+  });
+}
+
+
+  drawing = false;
+  brushPoints = [];
+  refreshCanvas();
+  saveFrame();
+if (currentTool === "eraser") {
+    lastEraserPos = null; // reset at end
+  }
+};
+
+// =======================
+// Pixel Helpers
+// =======================
+function getPixel(img,x,y){ const i=(y*img.width+x)*4,d=img.data; return {r:d[i],g:d[i+1],b:d[i+2],a:d[i+3]}; }
+function setPixel(data,x,y,c){ const i=(y*canvas.width+x)*4; data[i]=c.r; data[i+1]=c.g; data[i+2]=c.b; data[i+3]=255; }
+function pixelMatch(a,b){ return a.r===b.r && a.g===b.g && a.b===b.b && a.a===b.a; }
+function hexToRgba(hex){ hex=hex.replace("#",""); return {r:parseInt(hex.slice(0,2),16),g:parseInt(hex.slice(2,4),16),b:parseInt(hex.slice(4,6),16),a:255}; }
+
+// =======================
+// Flood Fill — Object-Based
+// =======================
+function floodFillObject(start, color) {
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const stack = [{ x: Math.floor(start.x), y: Math.floor(start.y) }];
+  const targetColor = getPixel(imgData, stack[0].x, stack[0].y);
+  const fillColor = hexToRgba(color);
+  if (pixelMatch(targetColor, fillColor)) return null;
+
+  let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+  const visited = new Uint8Array(canvas.width * canvas.height);
+
+  while (stack.length) {
+    const { x, y } = stack.pop();
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) continue;
+    const index = y * canvas.width + x;
+    if (visited[index]) continue;
+
+    const pixel = getPixel(imgData, x, y);
+    if (!pixelMatch(pixel, targetColor)) continue;
+
+    visited[index] = 1;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+
+    stack.push({ x: x+1, y }); stack.push({ x: x-1, y });
+    stack.push({ x, y: y+1 }); stack.push({ x, y: y-1 });
+  }
+
+  return { type: "fill", position: { x: minX, y: minY }, width: maxX-minX+1, height: maxY-minY+1, color, opacity: 1 };
+}
+
+// =======================
+// Tool Properties
+// =======================
+document.getElementById("brushSize").oninput = e => brushSize = +e.target.value;
+document.getElementById("brushColor").oninput = e => brushColor = e.target.value;
+document.getElementById("eraserSize").oninput = e => eraserSize = +e.target.value;
+document.getElementById("shapeColor").oninput = e => { shapeColor = e.target.value; renderShapePreviews(); };
+document.getElementById("shapeThickness").oninput = e => { shapeThickness = +e.target.value; renderShapePreviews(); };
+document.getElementById("fillColor").oninput = e => fillColor = e.target.value;
+document.getElementById("timelineFPS").oninput = e => { timelineFPS = +e.target.value; if(playing){ stopTimeline(); playTimeline(); } };
+
+// =======================
+// Shape Previews
+// =======================
+function renderShapePreviews() {
+  document.querySelectorAll(".shape-option").forEach(div=>{
+    const c=div.querySelector("canvas"), cx=c.getContext("2d"), shape=div.dataset.shape;
+    cx.clearRect(0,0,c.width,c.height); cx.strokeStyle=shapeColor; cx.lineWidth=3;
+    if(shape==="line"){cx.beginPath();cx.moveTo(4,c.height-4);cx.lineTo(c.width-4,4);cx.stroke();}
+    else if(shape==="rect") cx.strokeRect(4,4,c.width-8,c.height-8);
+    else if(shape==="circle"){cx.beginPath();cx.ellipse(c.width/2,c.height/2,(c.width-8)/2,(c.height-8)/2,0,0,Math.PI*2);cx.stroke();}
+  });
+  document.querySelectorAll(".shape-option").forEach(div=>{
+    div.onclick = () => {
+      document.querySelectorAll(".shape-option").forEach(d => d.classList.remove("active"));
+      div.classList.add("active");
+      shapeType = div.dataset.shape;
+    };
+  });
+}
+
+// =======================
+// Timeline Playback
+// =======================
+function playTimeline() {
+  if(playing) return;
+  playing = true;
+  playInterval = setInterval(()=>{
+    currentFrame = (currentFrame+1)%frames.length;
+    refreshCanvas();
+    renderTimeline();
+  },1000/timelineFPS);
+}
+function stopTimeline() {
+  playing = false;
+  clearInterval(playInterval);
+}
+
+// =======================
+// Draw Object Layer
+// =======================
+function drawObjectLayer(extraObjects = []) {
+  const allObjects = [];
+
+  for (let l = 0; l < layers.length; l++) {
+    allObjects.push(...getExposedObjectFrame(currentFrame, l));
+  }
+  allObjects.push(...extraObjects);
+
+  allObjects.forEach(obj => {
+    if (!obj || !obj.type) return;
+
+    ctx.save();
+    ctx.globalAlpha = obj.style?.opacity ?? obj.opacity ?? 1;
+
+    if (obj.transform) {
+      const t = obj.transform;
+      ctx.translate(t.x ?? 0, t.y ?? 0);
+      ctx.rotate(t.rotation ?? 0);
+      ctx.scale(t.scaleX ?? 1, t.scaleY ?? 1);
+    }
+
+    switch (obj.type) {
+
+      case "brush":
+        if (!obj.points?.length) break;
+        ctx.strokeStyle = obj.style?.color ?? "#000";
+        ctx.lineWidth = obj.style?.width ?? 1;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        const pts = obj.points;
+if (pts.length >= 2) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 2; i++) {
+    const xc = (pts[i].x + pts[i+1].x)/2;
+    const yc = (pts[i].y + pts[i+1].y)/2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+  }
+  // last segment
+  const l = pts.length;
+  ctx.lineTo(pts[l-1].x, pts[l-1].y);
+  ctx.stroke();
+}
+
+        ctx.stroke();
+        break;
+
+      case "rect":
+        if (obj.start && obj.end) {
+          ctx.strokeStyle = obj.style?.color ?? "#000";
+          ctx.lineWidth = obj.style?.thickness ?? 1;
+          ctx.strokeRect(obj.start.x, obj.start.y, obj.end.x - obj.start.x, obj.end.y - obj.start.y);
+        }
+        break;
+
+      case "line":
+        if (obj.start && obj.end) {
+          ctx.strokeStyle = obj.style?.color ?? "#000";
+          ctx.lineWidth = obj.style?.thickness ?? 1;
+          ctx.beginPath();
+          ctx.moveTo(obj.start.x, obj.start.y);
+          ctx.lineTo(obj.end.x, obj.end.y);
+          ctx.stroke();
+        }
+        break;
+
+      case "circle":
+        if (obj.start && obj.end) {
+          ctx.strokeStyle = obj.style?.color ?? "#000";
+          ctx.lineWidth = obj.style?.thickness ?? 1;
+          const cx = (obj.start.x + obj.end.x)/2;
+          const cy = (obj.start.y + obj.end.y)/2;
+          const rx = Math.abs(obj.end.x - obj.start.x)/2;
+          const ry = Math.abs(obj.end.y - obj.start.y)/2;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+          ctx.stroke();
+        }
+        break;
+
+      case "fill":
+        if (obj.color) {
+          ctx.fillStyle = obj.color;
+          ctx.globalAlpha = obj.opacity ?? 1;
+          if (obj.width && obj.height && obj.position) {
+            ctx.fillRect(obj.position.x, obj.position.y, obj.width, obj.height);
+          }
+        }
+        break;
+    }
+
+// Apply eraser masks if any
+if (obj._eraserMasks?.length) {
+
+  ctx.save();
+
+  // 🔥 Reset scale so mask doesn't inherit it
+  const t = obj.transform ?? { scaleX: 1, scaleY: 1 };
+
+  ctx.scale(
+    1 / (t.scaleX ?? 1),
+    1 / (t.scaleY ?? 1)
+  );
+
+  ctx.globalCompositeOperation = "destination-out";
+
+  obj._eraserMasks.forEach(mask => {
+    ctx.beginPath();
+ctx.ellipse(
+  mask.x * (t.scaleX ?? 1),
+  mask.y * (t.scaleY ?? 1),
+  mask.radiusX * (t.scaleX ?? 1),
+  mask.radiusY * (t.scaleY ?? 1),
+  0,
+  0,
+  Math.PI * 2
+);
+ctx.fill();
+  });
+
+  ctx.restore();
+}
+
+    ctx.restore(); // restore before selection box
+  });
+
+  if (currentTool === "transform" && selectedObject) {
+    drawSelectionBox(selectedObject);
+  }
+}
+function commitObjectCanvas(obj) {
+  // Compute bounding box
+  const box = getObjectBoundingBox(obj);
+  const width = box.width * (obj.transform?.scaleX ?? 1) + 20; // add padding
+  const height = box.height * (obj.transform?.scaleY ?? 1) + 20;
+
+  obj._canvas = document.createElement("canvas");
+  obj._canvas.width = width;
+  obj._canvas.height = height;
+  const ctx2 = obj._canvas.getContext("2d");
+  ctx2.imageSmoothingEnabled = true;
+
+  // Move origin to center for easier transform
+  ctx2.translate(width/2, height/2);
+
+  // Draw object into its own canvas
+  drawObjectOnContext(obj, ctx2);
+}
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(px - x1, py - y1);
+  }
+
+  const t = ((px - x1) * dx + (py - y1) * dy) / (dx*dx + dy*dy);
+  const clamped = Math.max(0, Math.min(1, t));
+
+  const projX = x1 + clamped * dx;
+  const projY = y1 + clamped * dy;
+
+  return Math.hypot(px - projX, py - projY);
+}
+
+function eraseWithCircle(x, y, radius) {
+
+  layers.forEach((_, l) => {
+    const objects = objectFrames[currentFrame][l];
+    const newObjects = [];
+
+    objects.forEach(obj => {
+      if (!obj) return;
+
+      // =========================
+      // BRUSH OBJECTS (Original Split Version)
+      // =========================
+      if (obj.type === "brush" && obj.points?.length) {
+
+        const strokeWidth = obj.style?.width ?? 4;
+        const effectiveRadius = radius + strokeWidth / 2;
+
+        const tx = obj.transform?.x ?? 0;
+        const ty = obj.transform?.y ?? 0;
+
+        let newSegments = [];
+        let currentSegment = [];
+
+        for (let i = 0; i < obj.points.length - 1; i++) {
+
+  const p1 = obj.points[i];
+  const p2 = obj.points[i + 1];
+
+  const x1 = p1.x + tx;
+  const y1 = p1.y + ty;
+  const x2 = p2.x + tx;
+  const y2 = p2.y + ty;
+
+  const d1 = Math.hypot(x1 - x, y1 - y);
+  const d2 = Math.hypot(x2 - x, y2 - y);
+  const segDist = pointToSegmentDistance(x, y, x1, y1, x2, y2);
+
+  const p1Inside = d1 <= effectiveRadius;
+  const p2Inside = d2 <= effectiveRadius;
+  const segmentTouches = segDist <= effectiveRadius;
+
+  // FULLY SAFE SEGMENT
+  if (!segmentTouches && !p1Inside && !p2Inside) {
+
+    if (currentSegment.length === 0) {
+      currentSegment.push(p1);
+    }
+    currentSegment.push(p2);
+
+  } else {
+
+    if (currentSegment.length > 1) {
+      newSegments.push(currentSegment);
+    }
+    currentSegment = [];
+
+  }
+}
+
+        if (currentSegment.length > 1) {
+          newSegments.push(currentSegment);
+        }
+
+        // 🔥 Create new brush objects (same as before)
+        newSegments.forEach(seg => {
+
+          const newBrush = {
+            type: "brush",
+            points: seg,
+            transform: obj.transform
+              ? { ...obj.transform }
+              : { x:0, y:0, rotation:0, scaleX:1, scaleY:1 },
+            style: { ...obj.style }
+          };
+
+          // =========================
+          // ADD SMOOTH ERASER MASK
+          // =========================
+          newBrush._eraserMasks = [{
+            x: x - tx,
+            y: y - ty,
+            radiusX: radius,
+            radiusY: radius
+          }];
+
+          newObjects.push(newBrush);
+
+        });
+
+      }
+
+      // =========================
+      // BASIC SHAPES (unchanged)
+      // =========================
+      else if (obj.type === "rect" || obj.type === "line" || obj.type === "circle") {
+
+        const box = getObjectBoundingBox(obj);
+        const cx = box.x + (obj.transform?.x ?? 0);
+        const cy = box.y + (obj.transform?.y ?? 0);
+
+        const dx = cx - x;
+        const dy = cy - y;
+
+        if (Math.hypot(dx, dy) > radius) {
+          newObjects.push(obj);
+        }
+
+      }
+
+      // =========================
+      // EVERYTHING ELSE
+      // =========================
+      else {
+        newObjects.push(obj);
+      }
+
+    });
+
+    objectFrames[currentFrame][l] = newObjects;
+  });
+
+  refreshCanvas();
+}
+
+function drawSelectionBox(obj) {
+  if (!obj || !obj.transform) return;
+
+  const t = obj.transform;
+  const box = getObjectBoundingBox(obj);
+  if (!box) return;
+
+  ctx.save();
+
+  // Move to object position (NO SCALE)
+  ctx.translate(t.x, t.y);
+  ctx.rotate(t.rotation ?? 0);
+
+  // Manually apply scale to width/height only
+  const width = box.width * t.scaleX;
+  const height = box.height * t.scaleY;
+
+  ctx.strokeStyle = "#00aaff";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+
+  ctx.strokeRect(
+    -width / 2,
+    -height / 2,
+    width,
+    height
+  );
+
+  // Corner handles
+  const corners = [
+    [-width/2, -height/2],
+    [ width/2, -height/2],
+    [ width/2,  height/2],
+    [-width/2,  height/2]
+  ];
+// Rotation handle
+ctx.fillStyle = "#00aaff";
+ctx.strokeStyle = "#00aaff";
+
+const rotX = 0;
+const rotY = -height / 2 - ROTATE_DIST;
+
+// line to handle
+ctx.beginPath();
+ctx.moveTo(0, -height / 2);
+ctx.lineTo(0, rotY);
+ctx.stroke();
+
+// handle circle
+ctx.beginPath();
+ctx.arc(rotX, rotY, 6, 0, Math.PI * 2);
+ctx.fill();
+
+  ctx.fillStyle = "#00aaff";
+  corners.forEach(([x, y]) => {
+    ctx.fillRect(x - 4, y - 4, 8, 8);
+  });
+
+  ctx.restore();
+}
+
+// =======================
+// Transform Interaction
+// =======================
+let transformAction = null; // "move", "rotate", "resize"
+let activeHandle = null; // corner index 0-3
+const HANDLE_SIZE = 8;
+const ROTATE_DIST = 15;
+
+function getHandleUnderMouse(obj, mouseX, mouseY) {
+  if (!obj || !obj.transform) return null;
+
+  const t = obj.transform;
+  const box = getObjectBoundingBox(obj);
+  if (!box) return null;
+
+  // 🔥 USE VISUAL SIZE
+  const width = box.width * t.scaleX;
+  const height = box.height * t.scaleY;
+
+  // convert mouse to object local space
+  let dx = mouseX - t.x;
+  let dy = mouseY - t.y;
+
+  const sin = Math.sin(-t.rotation);
+  const cos = Math.cos(-t.rotation);
+
+  let localX = dx * cos - dy * sin;
+  let localY = dx * sin + dy * cos;
+
+  // rotation handle
+  const rotX = 0;
+  const rotY = -height / 2 - ROTATE_DIST;
+  if (Math.hypot(localX - rotX, localY - rotY) <= HANDLE_SIZE) {
+    return { type: "rotate" };
+  }
+
+  // corner handles using VISUAL size
+  const corners = [
+    [-width / 2, -height / 2],
+    [ width / 2, -height / 2],
+    [ width / 2,  height / 2],
+    [-width / 2,  height / 2]
+  ];
+
+  for (let i = 0; i < corners.length; i++) {
+    const [cx, cy] = corners[i];
+    if (
+      Math.abs(localX - cx) <= HANDLE_SIZE &&
+      Math.abs(localY - cy) <= HANDLE_SIZE
+    ) {
+      return { type: "resize", corner: i };
+    }
+  }
+
+  return null;
+}
