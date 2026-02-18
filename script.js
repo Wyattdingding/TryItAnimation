@@ -1,8 +1,3 @@
-// =======================
-// Animate Clone JS — FEATURE COMPLETE + STABLE
-// Onion Skin fully isolated on separate canvas
-// =======================
-
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const timeline = document.getElementById("timeline");
@@ -1277,3 +1272,4 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
 
   return null;
 }
+
