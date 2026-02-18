@@ -51,6 +51,9 @@ let realFrames = []; // [frame][layer] => boolean
 let drawing = false;
 let startPos = { x: 0, y: 0 };
 let currentMousePos = { x: 0, y: 0 };
+canvas.addEventListener("touchmove", e => {
+    if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
+}, { passive: false });
 
 // =======================
 // Project Creation
@@ -70,6 +73,18 @@ createProjectBtn.onclick = () => {
     realFrames.push(layers.map(() => false));
     objectFrames.push(layers.map(() => []));
   }
+// High-DPI support
+function resizeCanvasForDPI() {
+    const dpi = window.devicePixelRatio || 1;
+    canvas.width = +projWInput.value * dpi;
+    canvas.height = +projHInput.value * dpi;
+    canvas.style.width = projWInput.value + "px";
+    canvas.style.height = projHInput.value + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+}
+resizeCanvasForDPI();
 
   currentFrame = 0;
   activeLayer = 0;
@@ -777,6 +792,23 @@ if (currentTool === "eraser") {
   }
 };
 
+canvas.addEventListener("touchstart", e => {
+    e.preventDefault(); // prevent scrolling
+    const pos = getCanvasPos(e);
+    canvas.onmousedown({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
+});
+
+canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    canvas.onmousemove({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
+});
+
+canvas.addEventListener("touchend", e => {
+    e.preventDefault();
+    canvas.onmouseup(e);
+});
+
 // =======================
 // Pixel Helpers
 // =======================
@@ -1277,3 +1309,15 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
 
   return null;
 }
+
+window.addEventListener("resize", () => {
+    const container = canvas.parentElement;
+    if (!container) return;
+
+    const scaleX = container.clientWidth / canvas.width;
+    const scaleY = container.clientHeight / canvas.height;
+    const scale = Math.min(scaleX, scaleY);
+
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.transformOrigin = "top left";
+});
