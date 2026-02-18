@@ -91,6 +91,37 @@ createProjectBtn.onclick = () => {
 ctx.imageSmoothingEnabled = true;
 ctx.imageSmoothingQuality = "high";
 
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let x, y;
+
+  if (e.touches && e.touches.length > 0) {
+    x = e.touches[0].clientX - rect.left;
+    y = e.touches[0].clientY - rect.top;
+  } else {
+    x = e.clientX - rect.left;
+    y = e.clientY - rect.top;
+  }
+
+  return { x, y };
+  // High-DPI support
+function resizeCanvasForDPI() {
+    const dpi = window.devicePixelRatio || 1;
+    canvas.width = +projWInput.value * dpi;
+    canvas.height = +projHInput.value * dpi;
+    canvas.style.width = projWInput.value + "px";
+    canvas.style.height = projHInput.value + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+}
+resizeCanvasForDPI();
+
+}
+canvas.addEventListener("touchmove", e => {
+    if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
+}, { passive: false });
+
 // =======================
 // Tool Selection
 // =======================
@@ -772,6 +803,23 @@ if (currentTool === "eraser") {
   }
 };
 
+canvas.addEventListener("touchstart", e => {
+    e.preventDefault(); // prevent scrolling
+    const pos = getCanvasPos(e);
+    canvas.onmousedown({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
+});
+
+canvas.addEventListener("touchmove", e => {
+    e.preventDefault();
+    const pos = getCanvasPos(e);
+    canvas.onmousemove({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
+});
+
+canvas.addEventListener("touchend", e => {
+    e.preventDefault();
+    canvas.onmouseup(e);
+});
+
 // =======================
 // Pixel Helpers
 // =======================
@@ -1272,4 +1320,16 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
 
   return null;
 }
+
+window.addEventListener("resize", () => {
+    const container = canvas.parentElement;
+    if (!container) return;
+
+    const scaleX = container.clientWidth / canvas.width;
+    const scaleY = container.clientHeight / canvas.height;
+    const scale = Math.min(scaleX, scaleY);
+
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.transformOrigin = "top left";
+});
 
