@@ -7,6 +7,7 @@ const createProjectBtn = document.getElementById("createProject");
 const projWInput = document.getElementById("projW");
 const projHInput = document.getElementById("projH");
 const projFPSInput = document.getElementById("projFPS");
+const timelineLengthInput = document.getElementById("timelineLength");
 const app = document.getElementById("app");
 
 // =======================
@@ -258,6 +259,31 @@ function renderTimeline() {
     timeline.appendChild(row);
   });
 }
+timelineLengthInput.onchange = () => {
+  let newLength = Math.max(1, Math.floor(+timelineLengthInput.value));
+  const currentLength = frames.length;
+
+  if (newLength > currentLength) {
+    // Add new frames
+    for (let i = currentLength; i < newLength; i++) {
+      frames.push(layers.map(() => ctx.createImageData(canvas.width, canvas.height)));
+      realFrames.push(layers.map(() => false));
+      objectFrames.push(layers.map(() => []));
+    }
+  } else if (newLength < currentLength) {
+    // Remove extra frames
+    frames.length = newLength;
+    realFrames.length = newLength;
+    objectFrames.length = newLength;
+
+    if (currentFrame >= newLength) {
+      currentFrame = newLength - 1;
+    }
+  }
+
+  renderTimeline();
+  refreshCanvas();
+};
 
 // =======================
 // Frame Interaction
@@ -1332,3 +1358,4 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
