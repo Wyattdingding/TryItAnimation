@@ -174,7 +174,18 @@ canvas {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 13px;
 }
+
+#timeline-slider input[type="number"] {
+  width: 50px;
+  padding: 2px 4px;
+  font-size: 13px;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
 #timelineFrames {
   flex: 1;
 }
@@ -289,4 +300,5 @@ canvas {
   border-color: #4da3ff;
   background: #2a3a4a;
 }
+
 
