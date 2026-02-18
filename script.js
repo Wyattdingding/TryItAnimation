@@ -73,6 +73,9 @@ createProjectBtn.onclick = () => {
     realFrames.push(layers.map(() => false));
     objectFrames.push(layers.map(() => []));
   }
+
+  currentFrame = 0;
+  activeLayer = 0;
 // High-DPI support
 function resizeCanvasForDPI() {
     const dpi = window.devicePixelRatio || 1;
@@ -85,9 +88,6 @@ function resizeCanvasForDPI() {
     ctx.imageSmoothingQuality = "high";
 }
 resizeCanvasForDPI();
-
-  currentFrame = 0;
-  activeLayer = 0;
 
   // Example predefined object
   objectFrames[0][0].push({
