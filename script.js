@@ -27,6 +27,10 @@ let transformOffset = { x: 0, y: 0 };
 let rotationStartAngle = 0;
 let rotationStartObjectRotation = 0;
 let lastEraserPos = null;
+let viewScale = 1;
+let viewOffset = { x: 0, y: 0 };
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
 
 // =======================
 // Timeline / State
@@ -104,8 +108,13 @@ function getCanvasPos(e) {
     y = e.clientY - rect.top;
   }
 
+  // Convert to world coordinates
+  x = (x - viewOffset.x) / viewScale;
+  y = (y - viewOffset.y) / viewScale;
+
   return { x, y };
-  // High-DPI support
+}
+
 function resizeCanvasForDPI() {
     const dpi = window.devicePixelRatio || 1;
     canvas.width = +projWInput.value * dpi;
@@ -118,9 +127,30 @@ function resizeCanvasForDPI() {
 }
 resizeCanvasForDPI();
 
-}
 canvas.addEventListener("touchmove", e => {
     if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
+}, { passive: false });
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+
+  const zoomIntensity = 0.1;
+  const direction = e.deltaY < 0 ? 1 : -1;
+  const zoom = 1 + direction * zoomIntensity;
+
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+
+  // Zoom toward mouse
+  viewOffset.x = mouseX - (mouseX - viewOffset.x) * zoom;
+  viewOffset.y = mouseY - (mouseY - viewOffset.y) * zoom;
+
+  viewScale *= zoom;
+
+  // Clamp zoom
+  viewScale = Math.max(0.1, Math.min(10, viewScale));
+
+  refreshCanvas();
 }, { passive: false });
 
 // =======================
@@ -493,7 +523,16 @@ function drawCurrentFrameOnly() {
 // Refresh Canvas
 // =======================
 function refreshCanvas() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+ctx.setTransform(
+  viewScale, 0,
+  0, viewScale,
+  viewOffset.x,
+  viewOffset.y
+);
+
   drawCurrentFrameOnly();
   drawObjectLayer();
 
@@ -552,6 +591,12 @@ if (!realFrames[currentFrame][activeLayer]) {
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+if (e.button === 1) {
+  isPanning = true;
+  panStart.x = e.clientX;
+  panStart.y = e.clientY;
+  return;
+}
 
   // --- Transform Tool ---
   if (currentTool === "transform") {
@@ -634,6 +679,19 @@ if (currentTool === "eraser") {
 canvas.onmousemove = e => {
   const r = canvas.getBoundingClientRect();
   currentMousePos = { x: e.clientX - r.left, y: e.clientY - r.top };
+if (isPanning) {
+  const dx = e.clientX - panStart.x;
+  const dy = e.clientY - panStart.y;
+
+  viewOffset.x += dx;
+  viewOffset.y += dy;
+
+  panStart.x = e.clientX;
+  panStart.y = e.clientY;
+
+  refreshCanvas();
+  return;
+}
 
   // --- Transform Dragging ---
   if (currentTool === "transform" && transformDragging && selectedObject) {
@@ -767,6 +825,7 @@ canvas.onmouseup = () => {
   }
 
   if (!drawing) return;
+isPanning = false;
 
   // --- Brush Commit ---
   if (currentTool === "brush" && brushPoints.length) {
