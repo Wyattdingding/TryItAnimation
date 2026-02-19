@@ -452,8 +452,8 @@ document.getElementById("addDuplicate").onmousedown = e => { e.preventDefault();
 document.getElementById("deleteFrame").onmousedown = e => { e.preventDefault(); deleteFrame(); renderTimeline(); refreshCanvas(); };
 const playBtn = document.getElementById("playTimeline");
 
-function togglePlayback(e) {
-  if (e) e.preventDefault();
+playBtn.onclick = e => {
+  e.preventDefault();
 
   if (playing) {
     stopTimeline();
@@ -462,10 +462,8 @@ function togglePlayback(e) {
     playTimeline();
     playBtn.textContent = "⏹ Stop";
   }
-}
+};
 
-playBtn.addEventListener("click", togglePlayback);
-playBtn.addEventListener("touchstart", togglePlayback, { passive: false });
 
 // =======================
 // Onion Skin Controls
@@ -924,26 +922,17 @@ function renderShapePreviews() {
 // Timeline Playback
 // =======================
 function playTimeline() {
-  if (playing) return;
-
-  stopTimeline();
-
+  if(playing) return;
   playing = true;
-
-  playInterval = setInterval(() => {
-    currentFrame = (currentFrame + 1) % frames.length;
+  playInterval = setInterval(()=>{
+    currentFrame = (currentFrame+1)%frames.length;
     refreshCanvas();
     renderTimeline();
-  }, 1000 / timelineFPS);
+  },1000/timelineFPS);
 }
-
 function stopTimeline() {
   playing = false;
-
-  if (playInterval !== null) {
-    clearInterval(playInterval);
-    playInterval = null;
-  }
+  clearInterval(playInterval);
 }
 
 // =======================
@@ -1369,4 +1358,3 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
-
