@@ -452,18 +452,19 @@ document.getElementById("addDuplicate").onmousedown = e => { e.preventDefault();
 document.getElementById("deleteFrame").onmousedown = e => { e.preventDefault(); deleteFrame(); renderTimeline(); refreshCanvas(); };
 const playBtn = document.getElementById("playTimeline");
 
-playBtn.onclick = e => {
-  e.preventDefault();
+playBtn.addEventListener("click", toggleTimeline, { passive: false });
+playBtn.addEventListener("touchend", toggleTimeline, { passive: false });
 
-  if (playing) {
+function toggleTimeline(e){
+  e.preventDefault();
+  if(playing){
     stopTimeline();
     playBtn.textContent = "▶ Play";
   } else {
     playTimeline();
     playBtn.textContent = "⏹ Stop";
   }
-};
-
+}
 
 // =======================
 // Onion Skin Controls
@@ -1373,4 +1374,5 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
 
