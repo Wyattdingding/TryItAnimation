@@ -921,18 +921,33 @@ function renderShapePreviews() {
 // =======================
 // Timeline Playback
 // =======================
+let lastTime = 0;
+
 function playTimeline() {
-  if(playing) return;
+  if (playing) return;
   playing = true;
-  playInterval = setInterval(()=>{
-    currentFrame = (currentFrame+1)%frames.length;
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function loop(time) {
+  if (!playing) return;
+
+  const delta = time - lastTime;
+  const frameDuration = 1000 / timelineFPS;
+
+  if (delta >= frameDuration) {
+    currentFrame = (currentFrame + 1) % frames.length;
     refreshCanvas();
     renderTimeline();
-  },1000/timelineFPS);
+    lastTime = time;
+  }
+
+  requestAnimationFrame(loop);
 }
+
 function stopTimeline() {
   playing = false;
-  clearInterval(playInterval);
 }
 
 // =======================
@@ -1358,3 +1373,4 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
