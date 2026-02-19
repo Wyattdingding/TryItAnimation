@@ -27,10 +27,6 @@ let transformOffset = { x: 0, y: 0 };
 let rotationStartAngle = 0;
 let rotationStartObjectRotation = 0;
 let lastEraserPos = null;
-let viewScale = 1;
-let viewOffset = { x: 0, y: 0 };
-let isPanning = false;
-let panStart = { x: 0, y: 0 };
 
 // =======================
 // Timeline / State
@@ -108,13 +104,8 @@ function getCanvasPos(e) {
     y = e.clientY - rect.top;
   }
 
-  // Convert to world coordinates
-  x = (x - viewOffset.x) / viewScale;
-  y = (y - viewOffset.y) / viewScale;
-
   return { x, y };
-}
-
+  // High-DPI support
 function resizeCanvasForDPI() {
     const dpi = window.devicePixelRatio || 1;
     canvas.width = +projWInput.value * dpi;
@@ -127,30 +118,9 @@ function resizeCanvasForDPI() {
 }
 resizeCanvasForDPI();
 
+}
 canvas.addEventListener("touchmove", e => {
     if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
-}, { passive: false });
-canvas.addEventListener("wheel", e => {
-  e.preventDefault();
-
-  const zoomIntensity = 0.1;
-  const direction = e.deltaY < 0 ? 1 : -1;
-  const zoom = 1 + direction * zoomIntensity;
-
-  const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-
-  // Zoom toward mouse
-  viewOffset.x = mouseX - (mouseX - viewOffset.x) * zoom;
-  viewOffset.y = mouseY - (mouseY - viewOffset.y) * zoom;
-
-  viewScale *= zoom;
-
-  // Clamp zoom
-  viewScale = Math.max(0.1, Math.min(10, viewScale));
-
-  refreshCanvas();
 }, { passive: false });
 
 // =======================
@@ -523,16 +493,7 @@ function drawCurrentFrameOnly() {
 // Refresh Canvas
 // =======================
 function refreshCanvas() {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-ctx.setTransform(
-  viewScale, 0,
-  0, viewScale,
-  viewOffset.x,
-  viewOffset.y
-);
-
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawCurrentFrameOnly();
   drawObjectLayer();
 
@@ -580,9 +541,9 @@ function saveFrame() {
 let brushPoints = [];
 
 canvas.onmousedown = e => {
-  const pos = getCanvasPos(e);
-startPos = { x: pos.x, y: pos.y };
-currentMousePos = { ...startPos };
+  const r = canvas.getBoundingClientRect();
+  startPos = { x: e.clientX - r.left, y: e.clientY - r.top };
+  currentMousePos = { ...startPos };
   drawing = true;
 
 if (!realFrames[currentFrame][activeLayer]) {
@@ -591,12 +552,6 @@ if (!realFrames[currentFrame][activeLayer]) {
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-if (e.button === 1) {
-  isPanning = true;
-  panStart.x = e.clientX;
-  panStart.y = e.clientY;
-  return;
-}
 
   // --- Transform Tool ---
   if (currentTool === "transform") {
@@ -677,21 +632,8 @@ if (currentTool === "eraser") {
 };
 
 canvas.onmousemove = e => {
-  const pos = getCanvasPos(e);
-currentMousePos = { x: pos.x, y: pos.y };
-if (isPanning) {
-  const dx = e.clientX - panStart.x;
-  const dy = e.clientY - panStart.y;
-
-  viewOffset.x += dx;
-  viewOffset.y += dy;
-
-  panStart.x = e.clientX;
-  panStart.y = e.clientY;
-
-  refreshCanvas();
-  return;
-}
+  const r = canvas.getBoundingClientRect();
+  currentMousePos = { x: e.clientX - r.left, y: e.clientY - r.top };
 
   // --- Transform Dragging ---
   if (currentTool === "transform" && transformDragging && selectedObject) {
@@ -825,7 +767,6 @@ canvas.onmouseup = () => {
   }
 
   if (!drawing) return;
-isPanning = false;
 
   // --- Brush Commit ---
   if (currentTool === "brush" && brushPoints.length) {
@@ -890,69 +831,22 @@ if (currentTool === "eraser") {
   }
 };
 
-let lastTouchDistance = null;
-
 canvas.addEventListener("touchstart", e => {
-  e.preventDefault();
-
-  if (e.touches.length === 1) {
-    // Single finger = draw
+    e.preventDefault(); // prevent scrolling
     const pos = getCanvasPos(e);
-    canvas.onmousedown({
-      clientX: e.touches[0].clientX,
-      clientY: e.touches[0].clientY,
-      button: 0
-    });
-  }
-
-  if (e.touches.length === 2) {
-    // Start pinch
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    lastTouchDistance = Math.hypot(dx, dy);
-  }
-}, { passive: false });
+    canvas.onmousedown({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
+});
 
 canvas.addEventListener("touchmove", e => {
-  e.preventDefault();
-
-  if (e.touches.length === 1) {
+    e.preventDefault();
     const pos = getCanvasPos(e);
-    canvas.onmousemove({
-      clientX: e.touches[0].clientX,
-      clientY: e.touches[0].clientY
-    });
-  }
-
-  if (e.touches.length === 2) {
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    const distance = Math.hypot(dx, dy);
-
-    if (lastTouchDistance !== null) {
-      const zoom = distance / lastTouchDistance;
-
-      const rect = canvas.getBoundingClientRect();
-      const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-      const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-
-      viewOffset.x = centerX - (centerX - viewOffset.x) * zoom;
-      viewOffset.y = centerY - (centerY - viewOffset.y) * zoom;
-
-      viewScale *= zoom;
-      viewScale = Math.max(0.1, Math.min(10, viewScale));
-
-      refreshCanvas();
-    }
-
-    lastTouchDistance = distance;
-  }
-}, { passive: false });
+    canvas.onmousemove({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
+});
 
 canvas.addEventListener("touchend", e => {
-  lastTouchDistance = null;
-  canvas.onmouseup();
-}, { passive: false });
+    e.preventDefault();
+    canvas.onmouseup(e);
+});
 
 // =======================
 // Pixel Helpers
@@ -1463,3 +1357,16 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
 
   return null;
 }
+
+window.addEventListener("resize", () => {
+    const container = canvas.parentElement;
+    if (!container) return;
+
+    const scaleX = container.clientWidth / canvas.width;
+    const scaleY = container.clientHeight / canvas.height;
+    const scale = Math.min(scaleX, scaleY);
+
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.transformOrigin = "top left";
+});
+
