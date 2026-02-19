@@ -52,8 +52,19 @@ let currentMousePos = { x: 0, y: 0 };
 // Project Creation
 // =======================
 createProjectBtn.onclick = () => {
-  canvas.width = +projWInput.value;
-  canvas.height = +projHInput.value;
+  const dpi = window.devicePixelRatio || 1;
+
+const projWidth = +projWInput.value;
+const projHeight = +projHInput.value;
+
+canvas.width = projWidth * dpi;
+canvas.height = projHeight * dpi;
+
+canvas.style.width = projWidth + "px";
+canvas.style.height = projHeight + "px";
+
+ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
+
   timelineFPS = +projFPSInput.value;
 
   frames = [];
@@ -88,6 +99,7 @@ createProjectBtn.onclick = () => {
   renderTimeline();
   refreshCanvas();
   renderShapePreviews();
+  scaleCanvasToFit();
 };
 ctx.imageSmoothingEnabled = true;
 ctx.imageSmoothingQuality = "high";
@@ -105,24 +117,11 @@ function getCanvasPos(e) {
   }
 
   return { x, y };
-  // High-DPI support
-function resizeCanvasForDPI() {
-    const dpi = window.devicePixelRatio || 1;
-    canvas.width = +projWInput.value * dpi;
-    canvas.height = +projHInput.value * dpi;
-    canvas.style.width = projWInput.value + "px";
-    canvas.style.height = projHInput.value + "px";
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-}
-resizeCanvasForDPI();
-
 }
 canvas.addEventListener("touchmove", e => {
     if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
 }, { passive: false });
-
+window.addEventListener("resize", scaleCanvasToFit);
 // =======================
 // Tool Selection
 // =======================
@@ -1369,4 +1368,23 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
+
+function scaleCanvasToFit() {
+  const wrap = document.getElementById("canvas-wrap");
+  const transform = document.getElementById("canvas-transform");
+
+  const wrapWidth = wrap.clientWidth;
+  const wrapHeight = wrap.clientHeight;
+
+  const canvasWidth = +projWInput.value;
+  const canvasHeight = +projHInput.value;
+
+  const scaleX = wrapWidth / canvasWidth;
+  const scaleY = wrapHeight / canvasHeight;
+
+  const scale = Math.min(scaleX, scaleY);
+
+  transform.style.transform = `scale(${scale})`;
+  transform.style.transformOrigin = "top left";
+}
 
