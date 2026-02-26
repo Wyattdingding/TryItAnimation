@@ -56,28 +56,26 @@ createProjectBtn.onclick = () => {
   canvas.height = +projHInput.value;
   timelineFPS = +projFPSInput.value;
 
-  frames = [];
-  realFrames = [];
-  objectFrames = [];
-  const defaultFrames = 10;
-
-  for (let i = 0; i < defaultFrames; i++) {
+frames = [];
+realFrames = [];
+objectFrames = [];
+const defaultFrames = 10;
+for (let i = 0; i < defaultFrames; i++) {
     frames.push(layers.map(() => ctx.createImageData(canvas.width, canvas.height)));
     realFrames.push(layers.map(() => false));
     objectFrames.push(layers.map(() => []));
-  }
+}
+currentFrame = 0;
+activeLayer = 0;
 
-  currentFrame = 0;
-  activeLayer = 0;
-
-  // Example predefined object
-  objectFrames[0][0].push({
+// Example predefined object
+objectFrames[0][0].push({
     type: "rect",
     width: 100,
     height: 80,
     transform: { x: 200, y: 150, rotation: 0, scaleX: 1, scaleY: 1 },
     style: { fill: "red", opacity: 1 }
-  });
+});
 
   // Show main app and hide modal
   app.hidden = false;
@@ -94,31 +92,26 @@ ctx.imageSmoothingQuality = "high";
 
 function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
-  let x, y;
+
+  let clientX, clientY;
 
   if (e.touches && e.touches.length > 0) {
-    x = e.touches[0].clientX - rect.left;
-    y = e.touches[0].clientY - rect.top;
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
   } else {
-    x = e.clientX - rect.left;
-    y = e.clientY - rect.top;
+    clientX = e.clientX;
+    clientY = e.clientY;
   }
 
-  return { x, y };
-  // High-DPI support
-function resizeCanvasForDPI() {
-    const dpi = window.devicePixelRatio || 1;
-    canvas.width = +projWInput.value * dpi;
-    canvas.height = +projHInput.value * dpi;
-    canvas.style.width = projWInput.value + "px";
-    canvas.style.height = projHInput.value + "px";
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-}
-resizeCanvasForDPI();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
 
+  return {
+    x: (clientX - rect.left) * scaleX,
+    y: (clientY - rect.top) * scaleY
+  };
 }
+
 canvas.addEventListener("touchmove", e => {
     if (e.touches.length > 1) e.preventDefault(); // block pinch zoom
 }, { passive: false });
@@ -140,68 +133,44 @@ function toggleToolProperties() {
   document.getElementById("fillColorContainer").style.display = currentTool === "fill" ? "block" : "none";
 }
 function getObjectAtPosition(x, y) {
+    for (let l = layers.length - 1; l >= 0; l--) {
+        const objects = getExposedObjectFrame(currentFrame, l);
+        for (let i = objects.length - 1; i >= 0; i--) {
+            const obj = objects[i];
+            if (!obj) continue;
+            const box = getObjectBoundingBox(obj);
+            if (!box) continue;
 
-  // Check layers from top to bottom
-  for (let l = layers.length - 1; l >= 0; l--) {
+            let localX = x;
+            let localY = y;
+            if (obj.transform) {
+                const t = obj.transform;
+                localX -= t.x ?? 0;
+                localY -= t.y ?? 0;
+                const sin = Math.sin(-(t.rotation ?? 0));
+                const cos = Math.cos(-(t.rotation ?? 0));
+                const lx = localX * cos - localY * sin;
+                const ly = localX * sin + localY * cos;
+                localX = lx / (t.scaleX ?? 1);
+                localY = ly / (t.scaleY ?? 1);
+            }
 
-    const objects = getExposedObjectFrame(currentFrame, l);
+            const padding = obj.type === "brush" ? (obj.style?.width ?? 4) / 2 : 0;
+            const left = box.x - box.width / 2 - padding;
+            const right = box.x + box.width / 2 + padding;
+            const top = box.y - box.height / 2 - padding;
+            const bottom = box.y + box.height / 2 + padding;
 
-    for (let i = objects.length - 1; i >= 0; i--) {
-
-      const obj = objects[i];
-      if (!obj) continue;
-
-      const box = getObjectBoundingBox(obj);
-      if (!box) continue;
-
-      let localX = x;
-      let localY = y;
-
-      if (obj.transform) {
-        const t = obj.transform;
-
-        localX -= t.x ?? 0;
-        localY -= t.y ?? 0;
-
-        const sin = Math.sin(-(t.rotation ?? 0));
-        const cos = Math.cos(-(t.rotation ?? 0));
-
-        const lx = localX * cos - localY * sin;
-        const ly = localX * sin + localY * cos;
-
-        localX = lx;
-        localY = ly;
-
-        localX /= t.scaleX ?? 1;
-        localY /= t.scaleY ?? 1;
-      }
-
-      const padding = obj.type === "brush"
-        ? (obj.style?.width ?? 4) / 2
-        : 0;
-
-      const left = box.x - box.width / 2 - padding;
-      const right = box.x + box.width / 2 + padding;
-      const top = box.y - box.height / 2 - padding;
-      const bottom = box.y + box.height / 2 + padding;
-
-      if (
-        localX >= left &&
-        localX <= right &&
-        localY >= top &&
-        localY <= bottom
-      ) {
-        activeLayer = l; // 🔥 auto-switch to clicked layer
-        renderLayers();
-        renderTimeline();
-        return obj;
-      }
+            if (localX >= left && localX <= right && localY >= top && localY <= bottom) {
+                activeLayer = l; // auto-switch to clicked layer
+                renderLayers();
+                renderTimeline();
+                return obj;
+            }
+        }
     }
-  }
-
-  return null;
+    return null;
 }
-
 // =======================
 // Layers
 // =======================
@@ -333,27 +302,29 @@ function makeKeyframeAt(frame, layer, sourceImg = null) {
 }
 
 function overwriteFrameBlank() {
-  objectFrames[currentFrame][activeLayer] = [];
-  realFrames[currentFrame][activeLayer] = true;
-  propagateObjectsFrom(currentFrame, activeLayer);
+    objectFrames[currentFrame][activeLayer] = [];
+    realFrames[currentFrame][activeLayer] = true;
+    propagateObjectsFrom(currentFrame, activeLayer);
 }
 
 function overwriteFrameDuplicate() {
-  const srcFrame = findPreviousReal(currentFrame, activeLayer);
-  if (srcFrame < 0) return;
-  objectFrames[currentFrame][activeLayer] = JSON.parse(
-    JSON.stringify(objectFrames[srcFrame][activeLayer])
-  );
-  realFrames[currentFrame][activeLayer] = true;
-  propagateObjectsFrom(currentFrame, activeLayer);
+    const srcFrame = findPreviousReal(currentFrame, activeLayer);
+    if (srcFrame < 0) return;
+    objectFrames[currentFrame][activeLayer] = JSON.parse(
+        JSON.stringify(objectFrames[srcFrame][activeLayer])
+    );
+    realFrames[currentFrame][activeLayer] = true;
+    rebuildSurfacesInFrame(currentFrame, activeLayer);
+    propagateObjectsFrom(currentFrame, activeLayer);
 }
 
 function propagateObjectsFrom(startFrame, layer) {
-  const src = objectFrames[startFrame][layer];
-  for (let i = startFrame + 1; i < objectFrames.length; i++) {
-    if (realFrames[i][layer]) break;
-    objectFrames[i][layer] = JSON.parse(JSON.stringify(src));
-  }
+    const src = objectFrames[startFrame][layer];
+    for (let i = startFrame + 1; i < objectFrames.length; i++) {
+        if (realFrames[i][layer]) break;
+        objectFrames[i][layer] = JSON.parse(JSON.stringify(src));
+        rebuildSurfacesInFrame(i, layer);
+    }
 }
 
 function deleteFrame() {
@@ -366,8 +337,9 @@ function deleteFrame() {
     for (let i = currentFrame; i < objectFrames.length; i++) {
       if (realFrames[i][activeLayer]) break;
       objectFrames[i][activeLayer] = JSON.parse(
-        JSON.stringify(objectFrames[prev][activeLayer])
-      );
+  JSON.stringify(objectFrames[prev][activeLayer])
+);
+rebuildSurfacesInFrame(i, activeLayer);
     }
   }
 }
@@ -400,50 +372,16 @@ function getExposedObjectFrame(frame, layer) {
 }
 
 function getObjectBoundingBox(obj) {
-  if (!obj) return null;
+    if (!obj) return null;
 
-  if (obj.type === "brush" && obj.points?.length) {
-    // points are relative to transform
-    const xs = obj.points.map(p => p.x);
-    const ys = obj.points.map(p => p.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    return { x: centerX, y: centerY, width, height };
-  }
+    if (obj.surface) {
+        const box = getSurfaceBoundingBox(obj);
+        if (box) return box;
+        return null;
+    }
 
-  if ((obj.type === "rect" || obj.type === "fill") && obj.start && obj.end) {
-    const minX = Math.min(obj.start.x, obj.end.x);
-    const maxX = Math.max(obj.start.x, obj.end.x);
-    const minY = Math.min(obj.start.y, obj.end.y);
-    const maxY = Math.max(obj.start.y, obj.end.y);
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    return { x: centerX, y: centerY, width, height };
-  }
-
-  if ((obj.type === "line" || obj.type === "circle") && obj.start && obj.end) {
-    const minX = Math.min(obj.start.x, obj.end.x);
-    const maxX = Math.max(obj.start.x, obj.end.x);
-    const minY = Math.min(obj.start.y, obj.end.y);
-    const maxY = Math.max(obj.start.y, obj.end.y);
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    return { x: centerX, y: centerY, width, height };
-  }
-
-  return { x: 0, y: 0, width: 0, height: 0 };
+    return null;
 }
-
 // =======================
 // Timeline Toolbar
 // =======================
@@ -477,6 +415,40 @@ document.getElementById("onionToggle").onchange = e => {
 document.getElementById("onionBack").oninput = e => { onionBack = +e.target.value; refreshCanvas(); };
 document.getElementById("onionForward").oninput = e => { onionForward = +e.target.value; refreshCanvas(); };
 
+function drawOnionObjects(frameIndex, baseAlpha, tint = null) {
+    for (let l = 0; l < layers.length; l++) {
+        const objs = getExposedObjectFrame(frameIndex, l);
+        objs.forEach(obj => {
+            if (!obj.surface) initObjectSurface(obj);
+            const t = obj.transform ?? { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+
+            ctx.save();
+            ctx.translate(t.x ?? 0, t.y ?? 0);
+            ctx.rotate(t.rotation ?? 0);
+            ctx.scale(t.scaleX ?? 1, t.scaleY ?? 1);
+
+            if (tint) {
+                // Draw tinted version
+                const off = document.createElement("canvas");
+                off.width = obj.surface.width;
+                off.height = obj.surface.height;
+                const offCtx = off.getContext("2d");
+                offCtx.drawImage(obj.surface, 0, 0);
+                offCtx.globalCompositeOperation = "source-in";
+                offCtx.fillStyle = tint;
+                offCtx.globalAlpha = baseAlpha;
+                offCtx.fillRect(0, 0, off.width, off.height);
+                ctx.drawImage(off, -obj.surface.width / 2, -obj.surface.height / 2);
+            } else {
+                ctx.globalAlpha = (obj.style?.opacity ?? 1) * baseAlpha;
+                ctx.drawImage(obj.surface, -obj.surface.width / 2, -obj.surface.height / 2);
+            }
+
+            ctx.restore();
+        });
+    }
+}
+
 // =======================
 // Draw only actual frame layers (no onion skin)
 // =======================
@@ -496,36 +468,24 @@ function refreshCanvas() {
   drawCurrentFrameOnly();
   drawObjectLayer();
 
-  if (onionEnabled && !drawing) {
-    const baseAlpha = 0.4;
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-
-    for (let l = 0; l < layers.length; l++) {
-      // Previous frames
-      for (let i = 1; i <= onionBack; i++) {
+if (onionEnabled && !drawing) {
+    // Previous frames (behind current) in blue
+    for (let i = 1; i <= onionBack; i++) {
         const frameIndex = currentFrame - i;
         if (frameIndex < 0) break;
-        const img = getExposedFrame(frameIndex, l);
-        if (!img || isImageDataEmpty(img)) continue;
-        ctx.globalAlpha = baseAlpha * (1 - i / (onionBack + 1));
-        ctx.putImageData(img, 0, 0);
-      }
-      // Future frames
-      for (let i = 1; i <= onionForward; i++) {
-        const frameIndex = currentFrame + i;
-        if (frameIndex >= frames.length) break;
-        const img = getExposedFrame(frameIndex, l);
-        if (!img || isImageDataEmpty(img)) continue;
-        ctx.globalAlpha = baseAlpha * (1 - i / (onionForward + 1));
-        ctx.putImageData(img, 0, 0);
-      }
+        const alpha = 0.4 * (1 - i / (onionBack + 1));
+        drawOnionObjects(frameIndex, alpha, "rgb(0, 110, 255)");
     }
 
-    ctx.restore();
+    // Next frames (ahead) in red
+    for (let i = 1; i <= onionForward; i++) {
+        const frameIndex = currentFrame + i;
+        if (frameIndex >= frames.length) break;
+        const alpha = 0.4 * (1 - i / (onionForward + 1));
+        drawOnionObjects(frameIndex, alpha, "rgba(0, 255, 0, 1)");
+    }
   }
 }
-
 // =======================
 // Save Frame
 // =======================
@@ -540,8 +500,7 @@ function saveFrame() {
 let brushPoints = [];
 
 canvas.onmousedown = e => {
-  const r = canvas.getBoundingClientRect();
-  startPos = { x: e.clientX - r.left, y: e.clientY - r.top };
+startPos = getCanvasPos(e);
   currentMousePos = { ...startPos };
   drawing = true;
 
@@ -564,7 +523,16 @@ if (!realFrames[currentFrame][activeLayer]) {
     if (handle) {
       transformAction = handle.type;
       if (handle.type === "resize") {
-  activeHandle = handle.corner;
+    activeHandle = handle.corner;
+
+    // Store original size for smooth scaling
+    const box = getObjectBoundingBox(selectedObject);
+    selectedObject._resizeStart = {
+        width: box.width,
+        height: box.height,
+        scaleX: selectedObject.transform.scaleX,
+        scaleY: selectedObject.transform.scaleY
+    };
 }
 
 if (handle.type === "rotate") {
@@ -631,8 +599,7 @@ if (currentTool === "eraser") {
 };
 
 canvas.onmousemove = e => {
-  const r = canvas.getBoundingClientRect();
-  currentMousePos = { x: e.clientX - r.left, y: e.clientY - r.top };
+currentMousePos = getCanvasPos(e);
 
   // --- Transform Dragging ---
   if (currentTool === "transform" && transformDragging && selectedObject) {
@@ -654,36 +621,44 @@ canvas.onmousemove = e => {
       }
       t.rotation = newRotation;
     } else if (transformAction === "resize" && activeHandle != null && selectedObject) {
-      const box = getObjectBoundingBox(selectedObject);
-      const visualWidth = box.width * t.scaleX;
-      const visualHeight = box.height * t.scaleY;
+    const t = selectedObject.transform;
 
-      let dx = mouseX - t.x;
-      let dy = mouseY - t.y;
+    // Use the _resizeStart values stored on mousedown
+    const baseWidth = selectedObject._resizeStart.width;
+    const baseHeight = selectedObject._resizeStart.height;
+    const startScaleX = selectedObject._resizeStart.scaleX;
+    const startScaleY = selectedObject._resizeStart.scaleY;
 
-      const sin = Math.sin(-t.rotation);
-      const cos = Math.cos(-t.rotation);
-      let localX = dx * cos - dy * sin;
-      let localY = dx * sin + dy * cos;
+    // mouse delta relative to object center
+    let dx = currentMousePos.x - t.x;
+    let dy = currentMousePos.y - t.y;
 
-      const corners = [
-        [-visualWidth / 2, -visualHeight / 2],
-        [ visualWidth / 2, -visualHeight / 2],
-        [ visualWidth / 2,  visualHeight / 2],
-        [-visualWidth / 2,  visualHeight / 2]
-      ];
-      const opposite = corners[(activeHandle + 2) % 4];
+    // convert to object-local coordinates (taking rotation into account)
+    const sin = Math.sin(-t.rotation);
+    const cos = Math.cos(-t.rotation);
+    let localX = dx * cos - dy * sin;
+    let localY = dx * sin + dy * cos;
 
-      const newWidth = Math.max(4, Math.abs(localX - opposite[0]));
-      const newHeight = Math.max(4, Math.abs(localY - opposite[1]));
+    // corners of the original object (before scale)
+    const corners = [
+        [-baseWidth / 2, -baseHeight / 2],
+        [ baseWidth / 2, -baseHeight / 2],
+        [ baseWidth / 2,  baseHeight / 2],
+        [-baseWidth / 2,  baseHeight / 2]
+    ];
 
-      t.scaleX = newWidth / box.width;
-      t.scaleY = newHeight / box.height;
-    }
+    const opposite = corners[(activeHandle + 2) % 4];
 
-    refreshCanvas();
-    return; // skip other tools while transforming
+    const newWidth = Math.max(4, Math.abs(localX - opposite[0]));
+    const newHeight = Math.max(4, Math.abs(localY - opposite[1]));
+
+    // apply scale relative to starting scale
+    t.scaleX = (newWidth / baseWidth) * startScaleX;
+    t.scaleY = (newHeight / baseHeight) * startScaleY;
   }
+    refreshCanvas();
+    return;
+}
 
   if (!drawing) return;
 
@@ -756,96 +731,116 @@ if (currentTool === "eraser") {
 };
 
 canvas.onmouseup = () => {
-  // --- Transform Drop ---
-  if (currentTool === "transform" && transformDragging) {
+
+if (currentTool === "transform" && transformDragging) {
+
     transformDragging = false;
     transformAction = null;
     activeHandle = null;
     saveFrame();
     return;
-  }
+}
 
   if (!drawing) return;
 
+  let obj = null;
+
   // --- Brush Commit ---
   if (currentTool === "brush" && brushPoints.length) {
-    // --- calculate center ---
+
     const xs = brushPoints.map(p => p.x);
     const ys = brushPoints.map(p => p.y);
-    const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
-    const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
 
-    // --- relative points ---
-    const relativePoints = brushPoints.map(p => ({ x: p.x - centerX, y: p.y - centerY }));
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
 
-    // --- smooth points using simple Catmull-Rom spline ---
-    const smoothPoints = [];
-    for (let i = 0; i < relativePoints.length - 1; i++) {
-      const p0 = relativePoints[i === 0 ? i : i - 1];
-      const p1 = relativePoints[i];
-      const p2 = relativePoints[i + 1];
-      const p3 = relativePoints[i + 2 < relativePoints.length ? i + 2 : i + 1];
-      const segments = 20; // points between each pair
-      for (let t = 0; t <= 1; t += 1 / segments) {
-        const tt = t * t;
-        const ttt = tt * t;
-        const x = 0.5 * ((2*p1.x) + (-p0.x + p2.x)*t + (2*p0.x - 5*p1.x + 4*p2.x - p3.x)*tt + (-p0.x + 3*p1.x - 3*p2.x + p3.x)*ttt);
-        const y = 0.5 * ((2*p1.y) + (-p0.y + p2.y)*t + (2*p0.y - 5*p1.y + 4*p2.y - p3.y)*tt + (-p0.y + 3*p1.y - 3*p2.y + p3.y)*ttt);
-        smoothPoints.push({ x, y });
-      }
-    }
+    const width = maxX - minX;
+    const height = maxY - minY;
 
-    objectFrames[currentFrame][activeLayer].push({
-      type: "brush",
-      points: smoothPoints,
-      transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
-      style: { color: brushColor, width: brushSize, opacity: 1 }
-    });
+    const centerX = minX + width / 2;
+    const centerY = minY + height / 2;
+
+    const relativePoints = brushPoints.map(p => ({
+        x: p.x - centerX,
+        y: p.y - centerY
+    }));
+
+    obj = {
+        type: "brush",
+        points: relativePoints,
+        width,
+        height,
+        transform: { x: centerX, y: centerY, rotation: 0, scaleX: 1, scaleY: 1 },
+        style: { color: brushColor, width: brushSize, opacity: 1 }
+    };
 }
 
   // --- Shape Commit ---
   if (currentTool === "shape") {
-  const cx = (startPos.x + currentMousePos.x) / 2;
-  const cy = (startPos.y + currentMousePos.y) / 2;
 
-  const relStart = { x: startPos.x - cx, y: startPos.y - cy };
-  const relEnd = { x: currentMousePos.x - cx, y: currentMousePos.y - cy };
+    const cx = (startPos.x + currentMousePos.x) / 2;
+    const cy = (startPos.y + currentMousePos.y) / 2;
 
-  objectFrames[currentFrame][activeLayer].push({
-    type: shapeType,
-    start: relStart,
-    end: relEnd,
-    transform: { x: cx, y: cy, rotation: 0, scaleX: 1, scaleY: 1 },
-    style: { color: shapeColor, thickness: shapeThickness, opacity: 1 }
-  });
-}
+    obj = {
+      type: shapeType,
+      start: { x: startPos.x - cx, y: startPos.y - cy },
+      end: { x: currentMousePos.x - cx, y: currentMousePos.y - cy },
+      transform: { x: cx, y: cy, rotation: 0, scaleX: 1, scaleY: 1 },
+      style: { color: shapeColor, thickness: shapeThickness, opacity: 1 }
+    };
+  }
 
+  if (obj) {
+    initObjectSurface(obj);
+    objectFrames[currentFrame][activeLayer].push(obj);
+  }
 
   drawing = false;
   brushPoints = [];
+  lastEraserPos = null;
+
+if (currentTool === "eraser") {
+
+    const objs = getExposedObjectFrame(currentFrame, activeLayer);
+
+    for (let i = objs.length - 1; i >= 0; i--) {
+        const obj = objs[i];
+        if (!obj.surface) continue;
+
+        const box = getSurfaceBoundingBox(obj);
+
+        if (!box) {
+            objs.splice(i, 1);
+
+            if (selectedObject === obj) {
+                selectedObject = null;
+                transformAction = null;
+                activeHandle = null;
+            }
+        }
+    }
+}
+
   refreshCanvas();
   saveFrame();
-if (currentTool === "eraser") {
-    lastEraserPos = null; // reset at end
-  }
 };
 
 canvas.addEventListener("touchstart", e => {
-    e.preventDefault(); // prevent scrolling
-    const pos = getCanvasPos(e);
-    canvas.onmousedown({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
-});
+  e.preventDefault();
+  canvas.onmousedown(e);
+}, { passive: false });
 
 canvas.addEventListener("touchmove", e => {
-    e.preventDefault();
-    const pos = getCanvasPos(e);
-    canvas.onmousemove({ clientX: pos.x + canvas.getBoundingClientRect().left, clientY: pos.y + canvas.getBoundingClientRect().top, touches: e.touches });
-});
+  e.preventDefault();
+  canvas.onmousemove(e);
+}, { passive: false });
 
 canvas.addEventListener("touchend", e => {
-    e.preventDefault();
-    canvas.onmouseup(e);
-});
+  e.preventDefault();
+  canvas.onmouseup(e);
+}, { passive: false });
 
 // =======================
 // Pixel Helpers
@@ -952,157 +947,133 @@ function stopTimeline() {
 }
 
 // =======================
-// Draw Object Layer
+// COMMITTED SURFACE SYSTEM
 // =======================
-function drawObjectLayer(extraObjects = []) {
-  const allObjects = [];
 
-  for (let l = 0; l < layers.length; l++) {
-    allObjects.push(...getExposedObjectFrame(currentFrame, l));
+function drawObjectOnContext(obj, ctx2) {
+  ctx2.save();
+
+  ctx2.globalAlpha = obj.style?.opacity ?? obj.opacity ?? 1;
+
+  switch (obj.type) {
+
+    case "brush":
+      if (!obj.points?.length) break;
+      ctx2.strokeStyle = obj.style?.color ?? "#000";
+      ctx2.lineWidth = obj.style?.width ?? 1;
+      ctx2.lineCap = "round";
+      ctx2.lineJoin = "round";
+
+      ctx2.beginPath();
+      ctx2.moveTo(obj.points[0].x, obj.points[0].y);
+      for (let i = 1; i < obj.points.length; i++) {
+        ctx2.lineTo(obj.points[i].x, obj.points[i].y);
+      }
+      ctx2.stroke();
+      break;
+
+    case "rect":
+      ctx2.strokeStyle = obj.style?.color ?? "#000";
+      ctx2.lineWidth = obj.style?.thickness ?? 1;
+      ctx2.strokeRect(obj.start.x, obj.start.y, obj.end.x - obj.start.x, obj.end.y - obj.start.y);
+      break;
+
+    case "line":
+      ctx2.strokeStyle = obj.style?.color ?? "#000";
+      ctx2.lineWidth = obj.style?.thickness ?? 1;
+      ctx2.beginPath();
+      ctx2.moveTo(obj.start.x, obj.start.y);
+      ctx2.lineTo(obj.end.x, obj.end.y);
+      ctx2.stroke();
+      break;
+
+    case "circle":
+      ctx2.strokeStyle = obj.style?.color ?? "#000";
+      ctx2.lineWidth = obj.style?.thickness ?? 1;
+      const cx = (obj.start.x + obj.end.x)/2;
+      const cy = (obj.start.y + obj.end.y)/2;
+      const rx = Math.abs(obj.end.x - obj.start.x)/2;
+      const ry = Math.abs(obj.end.y - obj.start.y)/2;
+      ctx2.beginPath();
+      ctx2.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
+      ctx2.stroke();
+      break;
+
+    case "fill":
+      ctx2.fillStyle = obj.color;
+      ctx2.fillRect(obj.position.x, obj.position.y, obj.width, obj.height);
+      break;
   }
-  allObjects.push(...extraObjects);
 
-  allObjects.forEach(obj => {
-    if (!obj || !obj.type) return;
-
-    ctx.save();
-    ctx.globalAlpha = obj.style?.opacity ?? obj.opacity ?? 1;
-
-    if (obj.transform) {
-      const t = obj.transform;
-      ctx.translate(t.x ?? 0, t.y ?? 0);
-      ctx.rotate(t.rotation ?? 0);
-      ctx.scale(t.scaleX ?? 1, t.scaleY ?? 1);
-    }
-
-    switch (obj.type) {
-
-      case "brush":
-        if (!obj.points?.length) break;
-        ctx.strokeStyle = obj.style?.color ?? "#000";
-        ctx.lineWidth = obj.style?.width ?? 1;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        const pts = obj.points;
-if (pts.length >= 2) {
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length - 2; i++) {
-    const xc = (pts[i].x + pts[i+1].x)/2;
-    const yc = (pts[i].y + pts[i+1].y)/2;
-    ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
-  }
-  // last segment
-  const l = pts.length;
-  ctx.lineTo(pts[l-1].x, pts[l-1].y);
-  ctx.stroke();
+  ctx2.restore();
 }
 
-        ctx.stroke();
-        break;
+function initObjectSurface(obj) {
 
-      case "rect":
-        if (obj.start && obj.end) {
-          ctx.strokeStyle = obj.style?.color ?? "#000";
-          ctx.lineWidth = obj.style?.thickness ?? 1;
-          ctx.strokeRect(obj.start.x, obj.start.y, obj.end.x - obj.start.x, obj.end.y - obj.start.y);
-        }
-        break;
+  const BASE_SIZE = 2048;
 
-      case "line":
-        if (obj.start && obj.end) {
-          ctx.strokeStyle = obj.style?.color ?? "#000";
-          ctx.lineWidth = obj.style?.thickness ?? 1;
-          ctx.beginPath();
-          ctx.moveTo(obj.start.x, obj.start.y);
-          ctx.lineTo(obj.end.x, obj.end.y);
-          ctx.stroke();
-        }
-        break;
+  const scaleX = Math.abs(obj.transform?.scaleX ?? 1);
+  const scaleY = Math.abs(obj.transform?.scaleY ?? 1);
 
-      case "circle":
-        if (obj.start && obj.end) {
-          ctx.strokeStyle = obj.style?.color ?? "#000";
-          ctx.lineWidth = obj.style?.thickness ?? 1;
-          const cx = (obj.start.x + obj.end.x)/2;
-          const cy = (obj.start.y + obj.end.y)/2;
-          const rx = Math.abs(obj.end.x - obj.start.x)/2;
-          const ry = Math.abs(obj.end.y - obj.start.y)/2;
-          ctx.beginPath();
-          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
-          ctx.stroke();
-        }
-        break;
+  // Use the larger scale to determine surface resolution
+  const maxScale = Math.max(scaleX, scaleY);
 
-      case "fill":
-        if (obj.color) {
-          ctx.fillStyle = obj.color;
-          ctx.globalAlpha = obj.opacity ?? 1;
-          if (obj.width && obj.height && obj.position) {
-            ctx.fillRect(obj.position.x, obj.position.y, obj.width, obj.height);
-          }
-        }
-        break;
-    }
+  // Increase resolution only when scaling above 1
+  const resolutionMultiplier = Math.max(1, maxScale);
 
-// Apply eraser masks if any
-if (obj._eraserMasks?.length) {
-
-  ctx.save();
-
-  // 🔥 Reset scale so mask doesn't inherit it
-  const t = obj.transform ?? { scaleX: 1, scaleY: 1 };
-
-  ctx.scale(
-    1 / (t.scaleX ?? 1),
-    1 / (t.scaleY ?? 1)
+  const SURFACE_SIZE = Math.min(
+    4096, // safety cap so we don’t explode memory
+    Math.floor(BASE_SIZE * resolutionMultiplier)
   );
 
-  ctx.globalCompositeOperation = "destination-out";
-
-  obj._eraserMasks.forEach(mask => {
-    ctx.beginPath();
-ctx.ellipse(
-  mask.x * (t.scaleX ?? 1),
-  mask.y * (t.scaleY ?? 1),
-  mask.radiusX * (t.scaleX ?? 1),
-  mask.radiusY * (t.scaleY ?? 1),
-  0,
-  0,
-  Math.PI * 2
-);
-ctx.fill();
-  });
-
-  ctx.restore();
-}
-
-    ctx.restore(); // restore before selection box
-  });
-
-  if (currentTool === "transform" && selectedObject) {
-    drawSelectionBox(selectedObject);
+  // Only recreate surface if size changed
+  if (!obj.surface || obj.surface.width !== SURFACE_SIZE) {
+    obj.surface = document.createElement("canvas");
+    obj.surface.width = SURFACE_SIZE;
+    obj.surface.height = SURFACE_SIZE;
+    obj.surfaceCtx = obj.surface.getContext("2d");
+    obj.surfaceCtx.imageSmoothingEnabled = true;
+    obj.surfaceCtx.imageSmoothingQuality = "high";
   }
-}
-function commitObjectCanvas(obj) {
-  // Compute bounding box
-  const box = getObjectBoundingBox(obj);
-  const width = box.width * (obj.transform?.scaleX ?? 1) + 20; // add padding
-  const height = box.height * (obj.transform?.scaleY ?? 1) + 20;
 
-  obj._canvas = document.createElement("canvas");
-  obj._canvas.width = width;
-  obj._canvas.height = height;
-  const ctx2 = obj._canvas.getContext("2d");
-  ctx2.imageSmoothingEnabled = true;
+  const ctx2 = obj.surfaceCtx;
 
-  // Move origin to center for easier transform
-  ctx2.translate(width/2, height/2);
+  ctx2.clearRect(0, 0, SURFACE_SIZE, SURFACE_SIZE);
 
-  // Draw object into its own canvas
+  ctx2.save();
+  ctx2.translate(SURFACE_SIZE / 2, SURFACE_SIZE / 2);
+
   drawObjectOnContext(obj, ctx2);
+
+  ctx2.restore();
+
+  obj.modified = false;
 }
+
+// =======================
+// Draw Object Layer (Surface Based)
+// =======================
+
+function drawObjectLayer(extraObjects = []) {
+    const allObjects = [];
+    for (let l = 0; l < layers.length; l++) {
+        allObjects.push(...getExposedObjectFrame(currentFrame, l));
+    }
+    allObjects.push(...extraObjects);
+    allObjects.forEach(obj => {
+        if (!obj.surface) initObjectSurface(obj);
+        const t = obj.transform ?? { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+        ctx.save();
+        ctx.translate(t.x ?? 0, t.y ?? 0);
+        ctx.rotate(t.rotation ?? 0);
+        ctx.globalAlpha = obj.style?.opacity ?? obj.opacity ?? 1;
+        ctx.scale(t.scaleX ?? 1, t.scaleY ?? 1);
+        ctx.drawImage(obj.surface, -obj.surface.width / 2, -obj.surface.height / 2);
+        ctx.restore();
+    });
+    if (currentTool === "transform" && selectedObject) drawSelectionBox(selectedObject);
+}
+
 function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
 
   const dx = x2 - x1;
@@ -1122,127 +1093,76 @@ function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
 }
 
 function eraseWithCircle(x, y, radius) {
+    for (let l = layers.length - 1; l >= 0; l--) {
+        const objs = getExposedObjectFrame(currentFrame, l);
+        for (let i = objs.length - 1; i >= 0; i--) {
+            const obj = objs[i];
+            if (!obj.surface) initObjectSurface(obj);
+            const t = obj.transform ?? { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+            const dx = x - t.x;
+            const dy = y - t.y;
+            const sin = Math.sin(-t.rotation);
+            const cos = Math.cos(-t.rotation);
+            const localX = (dx * cos - dy * sin) / (t.scaleX ?? 1);
+            const localY = (dx * sin + dy * cos) / (t.scaleY ?? 1);
+            const ctx2 = obj.surfaceCtx;
+            ctx2.globalCompositeOperation = "destination-out";
+ctx2.save();
+ctx2.translate(
+  localX + obj.surface.width / 2,
+  localY + obj.surface.height / 2
+);
 
-  layers.forEach((_, l) => {
-    const objects = objectFrames[currentFrame][l];
-    const newObjects = [];
+// scale inverse to object scale so eraser stays circular in world space
+ctx2.scale(
+  1 / (t.scaleX ?? 1),
+  1 / (t.scaleY ?? 1)
+);
 
-    objects.forEach(obj => {
-      if (!obj) return;
+ctx2.beginPath();
+ctx2.arc(0, 0, radius, 0, Math.PI * 2);
+ctx2.fill();
 
-      // =========================
-      // BRUSH OBJECTS (Original Split Version)
-      // =========================
-      if (obj.type === "brush" && obj.points?.length) {
-
-        const strokeWidth = obj.style?.width ?? 4;
-        const effectiveRadius = radius + strokeWidth / 2;
-
-        const tx = obj.transform?.x ?? 0;
-        const ty = obj.transform?.y ?? 0;
-
-        let newSegments = [];
-        let currentSegment = [];
-
-        for (let i = 0; i < obj.points.length - 1; i++) {
-
-  const p1 = obj.points[i];
-  const p2 = obj.points[i + 1];
-
-  const x1 = p1.x + tx;
-  const y1 = p1.y + ty;
-  const x2 = p2.x + tx;
-  const y2 = p2.y + ty;
-
-  const d1 = Math.hypot(x1 - x, y1 - y);
-  const d2 = Math.hypot(x2 - x, y2 - y);
-  const segDist = pointToSegmentDistance(x, y, x1, y1, x2, y2);
-
-  const p1Inside = d1 <= effectiveRadius;
-  const p2Inside = d2 <= effectiveRadius;
-  const segmentTouches = segDist <= effectiveRadius;
-
-  // FULLY SAFE SEGMENT
-  if (!segmentTouches && !p1Inside && !p2Inside) {
-
-    if (currentSegment.length === 0) {
-      currentSegment.push(p1);
+ctx2.restore();
+            obj.modified = true;
+        }
     }
-    currentSegment.push(p2);
-
-  } else {
-
-    if (currentSegment.length > 1) {
-      newSegments.push(currentSegment);
-    }
-    currentSegment = [];
-
-  }
+    realFrames[currentFrame][activeLayer] = true;
+    refreshCanvas();
 }
 
-        if (currentSegment.length > 1) {
-          newSegments.push(currentSegment);
+function getSurfaceBoundingBox(obj) {
+    if (!obj.surfaceCtx) return null;
+    const w = obj.surface.width;
+    const h = obj.surface.height;
+    const img = obj.surfaceCtx.getImageData(0, 0, w, h);
+    const data = img.data;
+
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            if (data[i + 3] !== 0) { // alpha > 0
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
         }
+    }
 
-        // 🔥 Create new brush objects (same as before)
-        newSegments.forEach(seg => {
+    if (maxX < minX || maxY < minY) {
+        return null; // fully erased
+    }
 
-          const newBrush = {
-            type: "brush",
-            points: seg,
-            transform: obj.transform
-              ? { ...obj.transform }
-              : { x:0, y:0, rotation:0, scaleX:1, scaleY:1 },
-            style: { ...obj.style }
-          };
+    return {
+    x: (minX + maxX) / 2 - w / 2,
+    y: (minY + maxY) / 2 - h / 2,
+    width: (maxX - minX) + 1,
+    height: (maxY - minY) + 1
+};
 
-          // =========================
-          // ADD SMOOTH ERASER MASK
-          // =========================
-          newBrush._eraserMasks = [{
-            x: x - tx,
-            y: y - ty,
-            radiusX: radius,
-            radiusY: radius
-          }];
-
-          newObjects.push(newBrush);
-
-        });
-
-      }
-
-      // =========================
-      // BASIC SHAPES (unchanged)
-      // =========================
-      else if (obj.type === "rect" || obj.type === "line" || obj.type === "circle") {
-
-        const box = getObjectBoundingBox(obj);
-        const cx = box.x + (obj.transform?.x ?? 0);
-        const cy = box.y + (obj.transform?.y ?? 0);
-
-        const dx = cx - x;
-        const dy = cy - y;
-
-        if (Math.hypot(dx, dy) > radius) {
-          newObjects.push(obj);
-        }
-
-      }
-
-      // =========================
-      // EVERYTHING ELSE
-      // =========================
-      else {
-        newObjects.push(obj);
-      }
-
-    });
-
-    objectFrames[currentFrame][l] = newObjects;
-  });
-
-  refreshCanvas();
 }
 
 function drawSelectionBox(obj) {
@@ -1254,54 +1174,53 @@ function drawSelectionBox(obj) {
 
   ctx.save();
 
-  // Move to object position (NO SCALE)
   ctx.translate(t.x, t.y);
   ctx.rotate(t.rotation ?? 0);
 
-  // Manually apply scale to width/height only
-  const width = box.width * t.scaleX;
-  const height = box.height * t.scaleY;
+  const scaleX = t.scaleX ?? 1;
+  const scaleY = t.scaleY ?? 1;
+
+  const width = box.width * scaleX;
+  const height = box.height * scaleY;
+
+  const offsetX = box.x * scaleX;
+  const offsetY = box.y * scaleY;
 
   ctx.strokeStyle = "#00aaff";
   ctx.lineWidth = 1;
   ctx.setLineDash([6, 4]);
 
   ctx.strokeRect(
-    -width / 2,
-    -height / 2,
+    offsetX - width/2,
+    offsetY - height/2,
     width,
     height
   );
 
-  // Corner handles
   const corners = [
-    [-width/2, -height/2],
-    [ width/2, -height/2],
-    [ width/2,  height/2],
-    [-width/2,  height/2]
+    [offsetX - width/2, offsetY - height/2],
+    [offsetX + width/2, offsetY - height/2],
+    [offsetX + width/2, offsetY + height/2],
+    [offsetX - width/2, offsetY + height/2]
   ];
-// Rotation handle
-ctx.fillStyle = "#00aaff";
-ctx.strokeStyle = "#00aaff";
-
-const rotX = 0;
-const rotY = -height / 2 - ROTATE_DIST;
-
-// line to handle
-ctx.beginPath();
-ctx.moveTo(0, -height / 2);
-ctx.lineTo(0, rotY);
-ctx.stroke();
-
-// handle circle
-ctx.beginPath();
-ctx.arc(rotX, rotY, 6, 0, Math.PI * 2);
-ctx.fill();
 
   ctx.fillStyle = "#00aaff";
   corners.forEach(([x, y]) => {
     ctx.fillRect(x - 4, y - 4, 8, 8);
   });
+
+  const ROTATE_DIST = 15;
+  const rotX = offsetX;
+  const rotY = offsetY - height/2 - ROTATE_DIST;
+
+  ctx.beginPath();
+  ctx.moveTo(offsetX, offsetY - height/2);
+  ctx.lineTo(rotX, rotY);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(rotX, rotY, 6, 0, Math.PI*2);
+  ctx.fill();
 
   ctx.restore();
 }
@@ -1316,22 +1235,17 @@ const ROTATE_DIST = 15;
 
 function getHandleUnderMouse(obj, mouseX, mouseY) {
   if (!obj || !obj.transform) return null;
-
   const t = obj.transform;
-  const box = getObjectBoundingBox(obj);
-  if (!box) return null;
 
-  // 🔥 USE VISUAL SIZE
-  const width = box.width * t.scaleX;
-  const height = box.height * t.scaleY;
+  const box = getObjectBoundingBox(obj);
+  const width = box.width * (t.scaleX ?? 1);
+  const height = box.height * (t.scaleY ?? 1);
 
   // convert mouse to object local space
   let dx = mouseX - t.x;
   let dy = mouseY - t.y;
-
   const sin = Math.sin(-t.rotation);
   const cos = Math.cos(-t.rotation);
-
   let localX = dx * cos - dy * sin;
   let localY = dx * sin + dy * cos;
 
@@ -1342,7 +1256,7 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
     return { type: "rotate" };
   }
 
-  // corner handles using VISUAL size
+  // corner handles
   const corners = [
     [-width / 2, -height / 2],
     [ width / 2, -height / 2],
@@ -1352,10 +1266,7 @@ function getHandleUnderMouse(obj, mouseX, mouseY) {
 
   for (let i = 0; i < corners.length; i++) {
     const [cx, cy] = corners[i];
-    if (
-      Math.abs(localX - cx) <= HANDLE_SIZE &&
-      Math.abs(localY - cy) <= HANDLE_SIZE
-    ) {
+    if (Math.abs(localX - cx) <= HANDLE_SIZE && Math.abs(localY - cy) <= HANDLE_SIZE) {
       return { type: "resize", corner: i };
     }
   }
@@ -1374,5 +1285,4 @@ window.addEventListener("resize", () => {
     canvas.style.transform = `scale(${scale})`;
     canvas.style.transformOrigin = "top left";
 });
-
 
