@@ -465,27 +465,33 @@ function drawCurrentFrameOnly() {
 // =======================
 function refreshCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw current frame only
   drawCurrentFrameOnly();
+
+  // Draw extra objects (like brush/shape preview)
   drawObjectLayer();
 
-if (onionEnabled && !drawing) {
-    // Previous frames (behind current) in blue
-    for (let i = 1; i <= onionBack; i++) {
-        const frameIndex = currentFrame - i;
-        if (frameIndex < 0) break;
-        const alpha = 0.4 * (1 - i / (onionBack + 1));
-        drawOnionObjects(frameIndex, alpha, "rgb(0, 110, 255)");
-    }
+  // Draw onion skins if enabled (always, even while drawing)
+  if (onionEnabled) {
+      // Previous frames (behind current) in blue
+      for (let i = 1; i <= onionBack; i++) {
+          const frameIndex = currentFrame - i;
+          if (frameIndex < 0) break;
+          const alpha = 0.4 * (1 - i / (onionBack + 1));
+          drawOnionObjects(frameIndex, alpha, "rgb(0, 110, 255)");
+      }
 
-    // Next frames (ahead) in red
-    for (let i = 1; i <= onionForward; i++) {
-        const frameIndex = currentFrame + i;
-        if (frameIndex >= frames.length) break;
-        const alpha = 0.4 * (1 - i / (onionForward + 1));
-        drawOnionObjects(frameIndex, alpha, "rgba(0, 255, 0, 1)");
-    }
+      // Next frames (ahead) in green
+      for (let i = 1; i <= onionForward; i++) {
+          const frameIndex = currentFrame + i;
+          if (frameIndex >= frames.length) break;
+          const alpha = 0.4 * (1 - i / (onionForward + 1));
+          drawOnionObjects(frameIndex, alpha, "rgb(0, 255, 0)");
+      }
   }
 }
+
 // =======================
 // Save Frame
 // =======================
