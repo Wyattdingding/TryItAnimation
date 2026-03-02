@@ -93,14 +93,28 @@ ctx.imageSmoothingQuality = "high";
 function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
 
-  let clientX, clientY;
+  let clientX = null;
+  let clientY = null;
 
+  // Touch events
   if (e.touches && e.touches.length > 0) {
     clientX = e.touches[0].clientX;
     clientY = e.touches[0].clientY;
-  } else {
+  }
+  // Touchend fallback
+  else if (e.changedTouches && e.changedTouches.length > 0) {
+    clientX = e.changedTouches[0].clientX;
+    clientY = e.changedTouches[0].clientY;
+  }
+  // Mouse
+  else if (typeof e.clientX === "number") {
     clientX = e.clientX;
     clientY = e.clientY;
+  }
+
+  // If still invalid, abort safely
+  if (clientX === null || clientY === null) {
+    return { x: currentMousePos.x, y: currentMousePos.y };
   }
 
   const scaleX = canvas.width / rect.width;
