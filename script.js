@@ -234,8 +234,9 @@ function renderTimeline() {
       f.dataset.layer = layerIdx;
       f.style.background = realFrames[frameIdx][layerIdx] ? "#fff" : "#777";
       if (frameIdx === currentFrame && layerIdx === activeLayer) f.classList.add("active");
-      f.onmousedown = frameMouseDown;
-      f.oncontextmenu = frameRightClick;
+f.onmousedown = frameMouseDown;
+f.ontouchstart = frameMouseDown;
+f.oncontextmenu = frameRightClick;
       row.appendChild(f);
     });
 
@@ -921,6 +922,8 @@ canvas.addEventListener("touchmove", e => {
 
 canvas.addEventListener("touchend", e => {
   e.preventDefault();
+  drawing = false;
+  transformDragging = false;
   canvas.onmouseup(e);
 }, { passive: false });
 
