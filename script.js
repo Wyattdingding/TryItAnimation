@@ -908,23 +908,24 @@ if (currentTool === "eraser") {
   saveFrame();
 };
 
-canvas.addEventListener("touchstart", e => {
-  e.preventDefault();
+canvas.addEventListener("pointerdown", e => {
+  canvas.setPointerCapture(e.pointerId);
   canvas.onmousedown(e);
-}, { passive: false });
+});
 
-canvas.addEventListener("touchmove", e => {
-  e.preventDefault();
+canvas.addEventListener("pointermove", e => {
   canvas.onmousemove(e);
-}, { passive: false });
+});
 
-canvas.addEventListener("touchend", e => {
-  e.preventDefault();
+canvas.addEventListener("pointerup", e => {
+  canvas.releasePointerCapture(e.pointerId);
+  canvas.onmouseup(e);
+});
+
+canvas.addEventListener("pointercancel", () => {
   drawing = false;
   transformDragging = false;
-  canvas.onmouseup(e);
-}, { passive: false });
-
+});
 // =======================
 // Pixel Helpers
 // =======================
