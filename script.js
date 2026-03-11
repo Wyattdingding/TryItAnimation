@@ -770,8 +770,11 @@ requestRefresh()
       points: smoothPoints,
       style: { color: brushColor, width: brushSize, opacity: 1 }
     };
-    refreshCanvas();
-    drawObjectLayer([previewObject]);
+requestRefresh();
+
+ctx.save();
+drawObjectLayer([previewObject]);
+ctx.restore();
 }
 
   // --- Shape Preview ---
@@ -782,8 +785,11 @@ requestRefresh()
       end: { ...currentMousePos },
       style: { color: shapeColor, thickness: shapeThickness, opacity: 1 }
     };
-    refreshCanvas();
-    drawObjectLayer([previewObject]);
+requestRefresh();
+
+ctx.save();
+drawObjectLayer([previewObject]);
+ctx.restore();
   }
 
   // --- Eraser Preview & Action ---
