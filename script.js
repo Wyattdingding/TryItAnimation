@@ -528,7 +528,7 @@ function refreshCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Draw all objects for current frame
-  drawObjectLayer();
+  drawObjectLayer(previewObject ? [previewObject] : []);
 
   // Draw onion skins
   if (onionEnabled) {
@@ -572,6 +572,7 @@ function saveFrame() {
 // Drawing — Object-Based
 // =======================
 let brushPoints = [];
+let previewObject = null;
 
 function handlePointerDown(e) {
 startPos = getCanvasPos(e);
@@ -759,16 +760,12 @@ requestRefresh()
       }
     }
 
-    const previewObject = {
+    previewObject = {
       type: "brush",
       points: smoothPoints,
       style: { color: brushColor, width: brushSize, opacity: 1 }
     };
 requestRefresh();
-
-ctx.save();
-drawObjectLayer([previewObject]);
-ctx.restore();
 }
 
   // --- Shape Preview ---
@@ -794,7 +791,7 @@ if (currentTool === "eraser") {
     const dy = currentMousePos.y - lastEraserPos.y;
     const dist = Math.hypot(dx, dy);
 
-    const step = Math.max(2, eraserSize / 3);
+    const step = Math.max(4, eraserSize / 2);
     const steps = Math.ceil(dist / step);
 
     for (let i = 0; i <= steps; i++) {
@@ -808,7 +805,7 @@ if (currentTool === "eraser") {
   }
 
   lastEraserPos = { ...currentMousePos };
-  refreshCanvas();
+  requestRefresh();
  }
 };
 
@@ -904,7 +901,7 @@ if (currentTool === "eraser") {
         }
     }
 }
-
+  previewObject = null;
   refreshCanvas();
   saveFrame();
 };
@@ -1229,7 +1226,7 @@ ctx2.restore();
         }
     }
     realFrames[currentFrame][activeLayer] = true;
-    refreshCanvas();
+    requestRefresh();
 }
 
 function getSurfaceBoundingBox(obj) {
