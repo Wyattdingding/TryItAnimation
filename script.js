@@ -404,18 +404,12 @@ function getExposedObjectFrame(frame, layer) {
 }
 
 function cloneObjectWithSurface(obj) {
+
     const cloned = JSON.parse(JSON.stringify(obj));
 
-    if (obj.surface) {
-        cloned.surface = document.createElement("canvas");
-        cloned.surface.width = obj.surface.width;
-        cloned.surface.height = obj.surface.height;
-
-        const ctx2 = cloned.surface.getContext("2d");
-        ctx2.drawImage(obj.surface, 0, 0);
-
-        cloned.surfaceCtx = ctx2;
-    }
+    // SHARE the same surface instead of duplicating it
+    cloned.surface = obj.surface;
+    cloned.surfaceCtx = obj.surfaceCtx;
 
     return cloned;
 }
